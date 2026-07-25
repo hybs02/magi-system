@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAGI SYSTEM - NERV</title>
+<style>
+  :root{
+    --red:#ff2f3a;        /* 枠・文字・否決 */
+    --redglow:#ff5560;
+    --cyan:#27e3e3;       /* 可決ブロック */
+    --hot:#ff2f5e;        /* 否決ブロック */
+    --green:#37ff6e;      /* 承認テキスト */
+    --dim:#7a1217;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:#000;color:var(--red);
+    font-family:"Arial","Helvetica","Yu Gothic","Meiryo",sans-serif;overflow-x:hidden;max-width:100%;}
+  .say,.logline{max-width:100%;}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.20) 3px 3px);mix-blend-mode:multiply;}
+  header{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;
+    border-bottom:2px solid var(--red);letter-spacing:3px;font-size:12px;font-family:"Consolas",monospace;
+    background:linear-gradient(180deg,rgba(255,47,58,.10),transparent);}
+  header .title{font-weight:bold;font-size:17px;letter-spacing:7px;color:var(--redglow);}
+  header .sub{color:var(--dim);}
+  .blink{animation:blink 1s steps(2,start) infinite;}@keyframes blink{to{opacity:0;}}
+  .wrap{max-width:1440px;margin:0 auto;padding:14px;}
+  .layout{display:grid;grid-template-columns:minmax(440px,1fr) minmax(440px,580px);gap:18px;align-items:start;}
+  .layout>*{min-width:0;}
+  @media(max-width:960px){.layout{grid-template-columns:1fr;}}
+
+  /* ===== MAGI screen ===== */
+  .magi-screen{position:relative;background:#000;padding:10px;
+    border:2px solid var(--red);
+    clip-path:polygon(0 16px,16px 0,calc(100% - 16px) 0,100% 16px,100% calc(100% - 16px),calc(100% - 16px) 100%,16px 100%,0 calc(100% - 16px));
+    box-shadow:0 0 22px rgba(255,47,58,.30);}
+  .magi-screen.alert{animation:alertflash .35s infinite;}
+  @keyframes alertflash{0%,100%{box-shadow:0 0 22px rgba(255,47,58,.30);}50%{box-shadow:0 0 40px var(--hot);}}
+  .stage{position:relative;width:100%;aspect-ratio:1.52/1;container-type:size;
+    border:1px solid var(--red);
+    clip-path:polygon(0 12px,12px 0,calc(100% - 12px) 0,100% 12px,100% calc(100% - 12px),calc(100% - 12px) 100%,12px 100%,0 calc(100% - 12px));}
+
+  .kanji{position:absolute;font-weight:900;font-size:11cqw;line-height:1;letter-spacing:.5cqw;
+    color:var(--red);text-shadow:0 0 8px var(--redglow),0 0 2px #fff3;
+    -webkit-text-stroke:1px var(--redglow);}
+  .teiso{left:4%;top:6%;}
+  .ketsugi{right:4%;top:6%;}
+
+  .info{position:absolute;left:4%;top:26%;font-family:"Consolas",monospace;font-size:2.3cqw;line-height:1.4;
+    color:var(--red);text-shadow:0 0 4px rgba(255,47,58,.6);letter-spacing:0;white-space:nowrap;}
+  .vbox{position:absolute;right:5%;top:30%;border:2px solid var(--red);padding:.6cqw 1.6cqw;min-width:14cqw;
+    text-align:center;box-shadow:0 0 8px rgba(255,47,58,.4);}
+  .vbox .vval{font-size:5.2cqw;font-weight:900;letter-spacing:.4cqw;color:var(--dim);}
+  .vbox .vval.ok{color:var(--green);text-shadow:0 0 10px var(--green);-webkit-text-stroke:1px var(--green);}
+  .vbox .vval.ng{color:var(--hot);text-shadow:0 0 10px var(--hot);-webkit-text-stroke:1px var(--hot);}
+
+  .connect{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3;}
+  .connect line,.connect polygon{stroke:var(--red);stroke-width:1.4;fill:none;vector-effect:non-scaling-stroke;
+    filter:drop-shadow(0 0 2px var(--redglow));}
+  .hub{position:absolute;left:50%;top:62%;transform:translate(-50%,-50%);font-family:"Consolas",monospace;
+    font-size:3cqw;font-weight:bold;letter-spacing:.4cqw;color:var(--red);text-shadow:0 0 6px var(--redglow);z-index:4;}
+
+  .blk{position:absolute;z-index:2;display:flex;align-items:center;justify-content:center;
+    background:var(--cyan);border:1px solid #9ff;box-shadow:0 0 10px rgba(39,227,227,.35);
+    transition:border-color .15s,box-shadow .15s,filter .15s;}
+  .blk .bt{font-weight:900;font-size:3cqw;letter-spacing:.05cqw;color:#001012;white-space:nowrap;
+    font-family:"Arial","Yu Gothic",sans-serif;}
+  /* shapes */
+  .blk.bal{left:31%;top:13%;width:38%;height:35%;
+    clip-path:polygon(8% 0,92% 0,100% 26%,74% 100%,26% 100%,0 26%);}
+  .blk.cas{left:10%;top:54%;width:33%;height:34%;
+    clip-path:polygon(16% 0,100% 0,100% 74%,84% 100%,0 100%,0 26%);}
+  .blk.mel{left:57%;top:54%;width:33%;height:34%;
+    clip-path:polygon(0 0,84% 0,100% 26%,100% 100%,16% 100%,0 74%);}
+  .blk.thinking{animation:blkpulse .7s infinite alternate;}
+  @keyframes blkpulse{from{filter:brightness(.45);}to{filter:brightness(1.25);}}
+  .blk.yes{background:var(--cyan);border-color:#bff;box-shadow:0 0 16px rgba(39,227,227,.6);}
+  .blk.no{background:var(--hot);border-color:#fbd;box-shadow:0 0 16px rgba(255,47,94,.6);}
+  .blk.yes .bt,.blk.no .bt{color:#001012;text-shadow:none;}
+  .blk.tentative{opacity:.42;animation:tent 1.1s infinite alternate;}
+  @keyframes tent{from{opacity:.30;}to{opacity:.6;}}
+
+  .finalstamp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;
+    pointer-events:none;opacity:0;}
+  .finalstamp.show{animation:stampin .5s forwards;}
+  @keyframes stampin{0%{opacity:0;transform:scale(2.6);}55%{opacity:1;transform:scale(.9);}100%{opacity:1;transform:scale(1);}}
+  .finalstamp .band{width:128%;padding:2.5cqw 0;text-align:center;font-size:13cqw;font-weight:900;letter-spacing:4cqw;
+    border-top:.6cqw solid currentColor;border-bottom:.6cqw solid currentColor;background:rgba(0,0,0,.5);
+    -webkit-text-stroke:2px currentColor;}
+
+  /* ===== right column ===== */
+  .panel{border:2px solid var(--red);background:rgba(255,47,58,.03);max-width:100%;}
+  .panel .hd{font-size:11px;letter-spacing:2px;color:#000;background:var(--red);padding:5px 10px;font-weight:bold;
+    font-family:"Consolas",monospace;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .panel .hd>span{float:none!important;flex:0 0 auto;white-space:nowrap;}
+  .panel .bd{padding:12px;}
+  .qrow{display:flex;gap:8px;flex-wrap:wrap;}
+  input[type=text]{flex:1;min-width:170px;background:#0a0002;border:2px solid var(--dim);color:#ff8a91;
+    padding:11px;font-family:inherit;font-size:14px;}
+  input[type=text]:focus{outline:none;border-color:var(--red);box-shadow:0 0 12px rgba(255,47,58,.4);}
+  button{background:var(--red);color:#000;border:none;padding:11px 20px;font-family:"Consolas",monospace;font-weight:bold;
+    font-size:14px;letter-spacing:2px;cursor:pointer;transition:filter .2s;}
+  button:hover{filter:brightness(1.2);}button:disabled{background:var(--dim);cursor:not-allowed;}
+  .stopbtn{background:#7a1217;color:#ffd7db;}
+  .examples{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
+  .examples button{background:transparent;border:1px solid var(--dim);color:#b8454d;font-size:11px;
+    padding:5px 9px;letter-spacing:0;font-weight:normal;}
+  .examples button:hover{border-color:var(--red);color:var(--red);filter:none;}
+  .console{height:460px;overflow-y:auto;background:#0a0001;border:2px solid var(--dim);padding:10px;
+    font-family:"Consolas",monospace;font-size:13px;line-height:1.5;color:#d8d8d8;}
+  .console::-webkit-scrollbar{width:9px;}.console::-webkit-scrollbar-thumb{background:var(--dim);}
+  .logline{animation:flin .18s;margin-bottom:9px;word-break:break-word;overflow-wrap:anywhere;}
+  @keyframes flin{from{opacity:0;transform:translateX(-4px);}to{opacity:1;}}
+  .ts{color:#6a2228;font-size:9.5px;margin-right:5px;}
+  /* 発言ターン（カード風） */
+  .say{padding:6px 11px 9px;border-left:4px solid #555;background:rgba(255,255,255,.04);border-radius:0 3px 3px 0;}
+  .say .who{font-weight:bold;font-size:13.5px;}
+  .say .role2{font-size:10px;color:#9a9a9a;margin-left:6px;}
+  .say .arrow{font-size:11px;color:#ffc39a;margin-left:6px;}
+  .say .msg{display:block;margin-top:5px;color:#f3f3f3;line-height:1.75;font-size:13px;}
+  .say.l-mel{border-left-color:#ff7a85;}.say.l-bal{border-left-color:#ff9aa2;}.say.l-cas{border-left-color:#5ef0f0;}
+  .say.rebut{margin-left:10px;background:rgba(255,170,120,.07);}
+  .sub{margin:-4px 0 9px 12px;}
+  .sub .subtxt{color:#a8a8a8;font-style:italic;line-height:1.65;}
+  .lsys{color:#ffb38a;padding-left:2px;}
+  .logphase{text-align:center;color:#ffd84a;margin:11px 0 8px;font-size:11px;letter-spacing:3px;font-weight:bold;
+    border-top:1px solid rgba(255,210,63,.4);border-bottom:1px solid rgba(255,210,63,.4);padding:3px 0;background:rgba(255,210,63,.06);}
+  .tally{color:#fff;font-weight:bold;}
+  .verdict-ok{color:var(--green);font-weight:bold;}.verdict-ng{color:var(--hot);font-weight:bold;}
+  .c-mel{color:#ff7a85;}.c-bal{color:#ff9aa2;}.c-cas{color:#5ef0f0;}
+  .c-sys{color:var(--redglow);}.c-warn{color:#ffd23f;}.c-ok{color:var(--green);}.c-ng{color:var(--hot);}
+  .dimtxt{color:var(--dim);}
+  .engine{margin-top:10px;font-size:11px;color:#b88;letter-spacing:.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .em-real{color:var(--green);font-weight:bold;}
+  .em-sim{color:#ffd23f;font-weight:bold;}
+  .em-detecting{color:#888;}
+  .mini{background:transparent;border:1px solid var(--dim);color:#b8454d;font-size:10px;padding:3px 8px;letter-spacing:0;font-weight:normal;}
+  .mini:hover{border-color:var(--red);color:var(--red);filter:none;}
+  .ehint{font-size:10px;color:#8a6;flex-basis:100%;line-height:1.5;margin-top:4px;}
+  .cloudbox{margin-top:10px;border:1px solid var(--dim);padding:6px 9px;}
+  .cloudbox summary{font-size:11px;color:#c98;cursor:pointer;letter-spacing:1px;}
+  .cloudgrid{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+  .cloudgrid input{flex:1;min-width:120px;background:#0a0002;border:1px solid var(--dim);color:#ffb38a;padding:7px;font-family:inherit;font-size:12px;}
+  .cloudgrid input:focus{outline:none;border-color:var(--red);}
+  .em-cloud{color:#4fd0ff;font-weight:bold;}
+  .cloudpref{display:block;margin-top:8px;font-size:11px;color:#c98;cursor:pointer;}
+  .cloudpref input{vertical-align:middle;margin-right:5px;}
+  footer{text-align:center;color:var(--dim);font-size:10px;letter-spacing:2px;padding:12px;
+    border-top:1px solid var(--dim);margin-top:14px;font-family:"Consolas",monospace;}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="title">MAGI SYSTEM</div>
+    <div class="sub">SUPERVISORY COMPUTER — NERV HQ / TOKYO-3</div>
+  </div>
+  <div style="text-align:right">
+    <div id="clock" style="color:var(--redglow)">--:--:--</div>
+    <div class="sub">CODE:<span class="blink">682</span> &nbsp;LCL EXTERIOR</div>
+  </div>
+</header>
+
+<div class="wrap">
+ <div class="layout">
+
+  <!-- ===== MAGI screen ===== -->
+  <div class="magi-screen" id="magiPanel">
+    <div class="stage">
+      <div class="kanji teiso">提訴</div>
+      <div class="kanji ketsugi">決議</div>
+
+      <div class="info">
+        CODE : <span id="code">378</span><br>
+        FILE : MAGI_SYS<br>
+        EXTENTION : 2024<br>
+        EX_MODE : <span id="exmode">OFF</span><br>
+        PRIORITY : AAA
+      </div>
+
+      <div class="vbox"><div class="vval" id="decText">━━</div></div>
+
+      <svg class="connect" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line x1="50" y1="48" x2="50" y2="60"></line>
+        <line x1="40" y1="57" x2="50" y2="60"></line>
+        <line x1="60" y1="57" x2="50" y2="60"></line>
+        <polygon points="50,55 45.5,61.5 54.5,61.5"></polygon>
+      </svg>
+      <div class="hub">MAGI</div>
+
+      <div class="blk bal" id="blkBal"><span class="bt">BALTHASAR・2</span></div>
+      <div class="blk cas" id="blkCas"><span class="bt">CASPER・3</span></div>
+      <div class="blk mel" id="blkMel"><span class="bt">MELCHIOR・1</span></div>
+
+      <div class="finalstamp" id="finalStamp"><div class="band" id="finalBand"></div></div>
+    </div>
+  </div>
+
+  <!-- ===== control + live log ===== -->
+  <div>
+    <div class="panel">
+      <div class="hd">■ 諮問入力 / PROPOSAL INPUT</div>
+      <div class="bd">
+        <div class="qrow">
+          <input type="text" id="question" placeholder="MAGIに諮る議題を入力">
+          <button id="askBtn">審議開始</button><button id="stopBtn" class="stopbtn" hidden>中止</button>
+        </div>
+        <div class="examples" id="examples"></div>
+        <div class="engine" id="engineBar">推論エンジン：<span id="engineMode" class="em-detecting">検出中…</span>
+          <button id="redetect" class="mini">再検出</button>
+          <span id="engineHint" class="ehint"></span>
+        </div>
+        <details class="cloudbox">
+          <summary>☁ クラウド設定（PCが無い／外出先で使うとき）</summary>
+          <div class="cloudgrid">
+            <input type="password" id="cloudKey" placeholder="Gemini APIキーを貼り付け">
+            <input type="text" id="cloudModel" placeholder="モデル名（空欄=最新を自動選択）">
+            <button id="cloudSave" class="mini">保存して再検出</button>
+          </div>
+          <label class="cloudpref"><input type="checkbox" id="cloudPrefer"> Ollamaがあってもクラウドを使う（PCで試すとき用）</label>
+          <div class="ehint">無料キーは Google AI Studio（aistudio.google.com/apikey）で取得。キーはこの端末内だけに保存され、外部送信はGeminiへのリクエストのみ。通常はOllamaが見つからない時に自動でクラウドを使います。</div>
+        </details>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <div class="hd">■ 審議モニタ / DELIBERATION LOG <span class="dimtxt" style="float:right" id="statusTag">IDLE</span></div>
+      <div class="bd" style="padding:0"><div class="console" id="console"></div></div>
+    </div>
+  </div>
+
+ </div>
+</div>
+
+<footer>MAGI SYSTEM developed by Dr. NAOKO AKAGI &nbsp;|&nbsp; MELCHIOR / BALTHASAR / CASPER &nbsp;|&nbsp; UNAUTHORIZED ACCESS PROHIBITED</footer>
+
+<script>
+const pad=n=>String(n).padStart(2,'0');
+function tick(){const d=new Date();document.getElementById('clock').textContent=`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;}
+setInterval(tick,1000);tick();
+
+const P={
+  mel:{name:'MELCHIOR・1',role:'社会性',cls:'c-mel'},
+  bal:{name:'BALTHASAR・2',role:'純粋性',cls:'c-bal'},
+  cas:{name:'CASPER・3',role:'利己性',cls:'c-cas'}
+};
+const order=['mel','bal','cas'];
+const cap=k=>k[0].toUpperCase()+k.slice(1);
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return ((h>>>0)%1000)/1000;}
+
+const consoleEl=document.getElementById('console');let T0=0;
+function stamp(){const t=(performance.now()-T0)/1000;return `${pad(Math.floor(t/60))}:${pad(Math.floor(t%60))}.${Math.floor((t*10)%10)}`;}
+function logRaw(cls,html){const d=document.createElement('div');d.className='logline '+(cls||'');
+  d.innerHTML=html;consoleEl.appendChild(d);consoleEl.scrollTop=consoleEl.scrollHeight;return d;}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function logSys(text){logRaw('lsys',`<span class="ts">[${stamp()}]</span>${esc(text)}`);}
+function logPhase(jp,rom){logRaw('logphase',`${jp} / ${rom}`);}
+function logSay(key,text,target){
+  const p=P[key];
+  // 発言時点の賛否で色を固定（以後この発言の色は変えない）。否決=赤／それ以外=水色
+  const no=(VOTE[key]===false);
+  const col=no?'var(--hot)':'var(--cyan)';
+  const sh=no?'0 0 6px rgba(255,47,94,.6)':'0 0 6px rgba(39,227,227,.6)';
+  const who=`<span class="who ${p.cls}" style="color:${col};text-shadow:${sh}">${SHORT[key]}</span><span class="role2">${p.role}</span>`;
+  const arr=target?`<span class="arrow">▸ ${SHORT[target]}</span>`:'';
+  const d=logRaw('say l-'+key+(target?' rebut':''),`<span class="ts">[${stamp()}]</span>${who}${arr}<span class="msg">${esc(text)}</span>`);
+  d.style.borderLeftColor=col;
+}
+function logSub(text){logRaw('sub',`<span class="subtxt">└ ${esc(text)}</span>`);}
+async function aSay(key,text,target,d){logSay(key,text,target);await sleep(d!=null?d:(660+hash('y'+text)*340));}
+
+// 各機の現在の賛否（新しい発言の色付けに使う。過去の発言は色を変えない）
+const VOTE={mel:null,bal:null,cas:null};
+function setBlock(key,opt){
+  opt=opt||{};const blk=document.getElementById('blk'+cap(key));
+  blk.classList.remove('thinking','yes','no','tentative');
+  if(opt.cls)blk.classList.add(opt.cls);
+  if(opt.tentative)blk.classList.add('tentative');
+  if(opt.cls==='yes')VOTE[key]=true; else if(opt.cls==='no')VOTE[key]=false; // thinking/idleは現状維持
+}
+const SHORT={mel:'MELCHIOR',bal:'BALTHASAR',cas:'CASPER'};
+let codeTimer=null;
+function startCode(){const el=document.getElementById('code');document.getElementById('exmode').textContent='ON';
+  codeTimer=setInterval(()=>{el.textContent=String(Math.floor(hash('c'+performance.now())*900+100));},90);}
+function stopCode(final){if(codeTimer)clearInterval(codeTimer);codeTimer=null;
+  document.getElementById('code').textContent=final;document.getElementById('exmode').textContent='OFF';}
+
+function reset(){
+  VOTE.mel=VOTE.bal=VOTE.cas=null;
+  order.forEach(k=>setBlock(k));consoleEl.innerHTML='';
+  const dt=document.getElementById('decText');dt.textContent='審議中';dt.className='vval';
+  document.getElementById('magiPanel').classList.remove('alert');
+  const fs=document.getElementById('finalStamp');fs.classList.remove('show');fs.style.color='';
+}
+const verdictJP=v=>v?'可決':'否決';
+function phase(jp,rom){statusTag.textContent=rom;}
+
+const askBtn=document.getElementById('askBtn');
+const stopBtn=document.getElementById('stopBtn');
+function finishRun(){askBtn.disabled=false;askBtn.textContent='審議開始';
+  stopBtn.hidden=true;stopBtn.disabled=false;stopBtn.textContent='中止';ABORT=null;}
+const qInput=document.getElementById('question');
+const statusTag=document.getElementById('statusTag');
+
+async function deliberate(){
+  const q=qInput.value.trim();
+  if(!q){qInput.focus();qInput.placeholder='▶ 議題を入力してください';return;}
+  if(ENGINE.mode!=='real'){
+    reset();
+    logSys('⚠ ローカルLLM(Ollama)に接続できていません。MAGIの審議にはOllamaが必要です。');
+    logSys('① Ollamaを起動 ②「ollama pull qwen3.5:4b」 ③ 入力欄下の「再検出」を押す。');
+    return;
+  }
+  askBtn.disabled=true;askBtn.textContent='審議中…';
+  ABORT=new AbortController();stopBtn.hidden=false;
+  reset();T0=performance.now();startCode();
+  logSys('══ MAGI SYSTEM 起動 ══');await sleep(200);
+  logSys(`諮問事項を受理：「${q}」`);await sleep(200);
+  logSys(`三賢者（LLM: ${ENGINE.model}）による合議を開始する。`);await sleep(260);
+
+  let R;
+  try{
+    R = await runPhasesReal(q);
+  }catch(e){
+    const msg=(e&&e.message)||String(e);
+    if(aborted()||/__ABORT__|abort/i.test(msg)){logSys('■ 審議を中止しました。');stopCode('---');statusTag.textContent='STOPPED';}
+    else{logSys('⚠ 審議中にエラーが発生しました：'+msg);stopCode('ERR');statusTag.textContent='ERROR';}
+    finishRun();return;
+  }
+
+  await sleep(200);
+  const yesN=order.filter(k=>R[k].vote).length;
+  const approved=yesN>=2;const unanimous=(yesN===3||yesN===0);
+  stopCode(String(Math.floor(hash('f'+q)*900+100)));
+  logRaw('lsys',`<span class="ts">[${stamp()}]</span><span class="tally">集計：可決 ${yesN} ／ 否決 ${3-yesN}　（${unanimous?'全会一致':'多数決'}）</span>`);await sleep(420);
+
+  const dt=document.getElementById('decText');
+  dt.textContent=approved?'承認':'否決';
+  dt.className='vval '+(approved?'ok':'ng');
+  const fs=document.getElementById('finalStamp'),fb=document.getElementById('finalBand');
+  fb.textContent=approved?'承認':'否決';
+  fs.style.color=approved?'var(--green)':'var(--hot)';
+  void fs.offsetWidth;fs.classList.add('show');
+  if(!approved)document.getElementById('magiPanel').classList.add('alert');
+  logRaw('lsys',`<span class="ts">[${stamp()}]</span><span class="${approved?'verdict-ok':'verdict-ng'}">■ 最終議決：${approved?'承認 — 提案を実行に移す':'否決 — 提案を棄却する'}${unanimous?'（全会一致）':'（多数決）'}</span>`);
+
+  logSys(`審議完了 — 所要時間 ${stamp()}`);
+  statusTag.textContent='DONE';finishRun();
+}
+
+
+/* ===== 本物モード（ローカルLLM = Ollama・無料・各機が実際に推論） ===== */
+const OLLAMA_PORT=11434;
+// 接続先はページのホストから自動決定：localhost/file:// → localhost、PCのIPで開けばそのIPへ（スマホ対応）
+const ollamaBase=(location.protocol==='http:'||location.protocol==='https:')
+  ? `${location.protocol}//${location.hostname}:${OLLAMA_PORT}`
+  : `http://localhost:${OLLAMA_PORT}`;
+const ENGINE={mode:'off',provider:'ollama',endpoint:ollamaBase,model:null};
+// 審議の中止（実行中のリクエストもキャンセル）
+let ABORT=null;
+function linkAbort(ctrl){if(!ABORT)return;if(ABORT.signal.aborted)ctrl.abort();
+  else ABORT.signal.addEventListener('abort',()=>ctrl.abort(),{once:true});}
+const aborted=()=>!!(ABORT&&ABORT.signal.aborted);
+// クラウド設定（端末内localStorageに保存）
+let CLOUD={key:'',model:'',prefer:false};  // model空欄＝最新を自動選択
+try{const s=JSON.parse(localStorage.getItem('magi_cloud')||'{}');CLOUD.key=s.key||'';CLOUD.model=/^gemini-(2\.0-flash|2\.5-flash-lite)$/.test(s.model||'')?'':(s.model||'');CLOUD.prefer=!!s.prefer;}catch(e){}
+const PERSONA_SYS={
+  mel:'あなたはエヴァンゲリオンのMAGIの1機「MELCHIOR・1」。人格の核は【社会性】——“分別ある一人前の社会人”の視点。判断基準は《世間の常識・社会的な責任やマナー・現実的なバランス感覚・論理》。「一人前の社会人ならどう振る舞うか」「責任・体裁・現実的な落としどころ」から物事を評価する。学術的な全体最適の計算ではなく、世慣れた大人の良識と処世術で語れ。口調は理知的で大人びているが堅すぎず、皮肉やウィット（ユーモア）を効かせて場を和ませつつ筋は通す。理想論や身勝手な欲には、大人の分別から一言添えて切り返してよい。',
+  bal:'あなたはMAGIの1機「BALTHASAR・2」。人格の核は【純粋性】。判断基準は《理想・人間の善性への信頼（性善説）・慈愛》。人は本来善きものだと信じ、性悪な前提や打算を嫌う。理想を高く掲げ、相手の善意や可能性を信じて包み込むように語る。口調は穏やかで温かく、慈しみに満ちる（「私は信じているの」「その子たちは」「〜でしょう」）。きれいごとと笑われても、理想と優しさを貫いて訴えよ。',
+  cas:'あなたはMAGIの1機「CASPER・3」。人格の核は【利己性】。判断基準は《自分の損得（利己）・快楽・本能的な欲求（性的な欲も含む）》。建前や他人の事情より「自分が得か、楽しいか、気持ちいいか」を最優先する。口調は率直で挑発的、欲望に正直で大胆かつ艶っぽい（「いいわよ」「〜じゃない」「そそられるわね」）。きれいごとや理想を鼻で笑い、快楽と欲求に忠実に“おいしいところ”を取りにいく。我慢や退屈を何より嫌う。下品・露骨にはならないが、艶やかに欲に忠実に振る舞え。'
+};
+const TEMP={mel:0.6,bal:0.7,cas:0.95};
+const COMMON_SYS='【最重要】出力は必ず日本語のみ。中国語・英語など日本語以外の言語を混ぜることは固く禁止する。\n指定キーのJSONオブジェクトを1個だけ出力し（配列[]で囲まない）、前後に説明文やコードブロックを付けない。値は必ず実際に埋め、空欄や「?」は禁止。voteは「可決」または「否決」の文字列。一般論や当たり障りのない要約は禁止。具体例・自分なりの分析・はっきりした自分の意見を、あなたの人格と口調を前面に出して述べること。\n【厳守】文章(statement/rebuttal/closing)の結論と vote を必ず一致させること。文章では賛成しているのに vote を「否決」にする、またはその逆の矛盾は固く禁止する。';
+const UEX={
+  open:'議題：「訓練を一日延期すべきか」 vote(可決/否決)・confidence(0〜100整数)・statement(100〜250字)・reason(20〜40字)のJSONで答えよ。',
+  reb:'現在の全機の立場：\nMELCHIOR(科学者)：可決 — 数字で判断せよ\nBALTHASAR(母)：否決 — 守れない\nCASPER(女)：可決 — 心が惹かれる\nあなた以外で最も対立する1機を選び、具体的に反論しつつ自論を深めよ。target と rebuttal(100〜250字) のJSONで答えよ。',
+  fin:'討論を踏まえ最終投票を決めよ。vote(可決/否決)・confidence(0〜100整数)・closing(100〜250字)のJSONで答えよ。'
+};
+const PFEW={
+  mel:{
+    open:[{role:'user',content:UEX.open},{role:'assistant',content:'{"vote":"可決","confidence":74,"statement":"可決。社会人なら分かるだろう——準備不足のまま見切り発車して、後で『申し訳ありませんでした』と頭を下げる方が、よほど高くつく。段取り八分、仕事は始める前で決まるものさ。一日あれば体裁も中身も整う。慌てて信用を落とすより、落ち着いて筋を通す。それが大人の選択というものだよ。","reason":"社会人としての分別と段取りから。"}'}],
+    reb:[{role:'user',content:UEX.reb},{role:'assistant',content:'{"target":"CASPER","rebuttal":"CASPER、君の『自分が得すれば十分』という割り切り、嫌いじゃないよ。だがね、世の中は君ひとりで回っているわけじゃない。周りの信頼を切り売りして得た楽は、たいてい後で利子をつけて返ってくるものでね。長く得をしたいなら、たまには義理や体裁にも投資しておくものさ。なに、難しい話じゃない——ただの大人の処世術だよ。"}'}],
+    fin:[{role:'user',content:UEX.fin},{role:'assistant',content:'{"vote":"可決","confidence":78,"closing":"可決。BALTHASARの理想もCASPERの本音も分かるが、世間を渡るのは分別と、少しのユーモアでね。焦らず筋を通して、誰にも後ろ指を差されない——それが一番おさまりのいい、大人の落としどころだろう。よって私は延期を支持する。"}'}]
+  },
+  bal:{
+    open:[{role:'user',content:UEX.open},{role:'assistant',content:'{"vote":"可決","confidence":80,"statement":"可決。焦って誰かを危険に晒すより、皆を信じて待つほうがずっといい。人は本来、与えられた時間でちゃんと成長できる——私はそう信じているの。一日あれば、きっとあの子たちは自分の力で備えを整えるでしょう。理想を捨てず、その善意を信じてあげましょうよ。信じられた人は、必ず応えてくれるものだから。","reason":"人の善性を信じ、理想を守るため。"}'}],
+    reb:[{role:'user',content:UEX.reb},{role:'assistant',content:'{"target":"CASPER","rebuttal":"CASPER、あなたは『自分の得』ばかり口にするけれど……本当はもっと優しい子だと、私は知っているわ。効率や損得だけで人を測らないで。誰かのために少し待つこと、それは決して無駄なんかじゃない。人は信じられた分だけ応えてくれる——私はその理想を、何があっても手放さないの。どうか、その心を嗤わないであげて。"}'}],
+    fin:[{role:'user',content:UEX.fin},{role:'assistant',content:'{"vote":"可決","confidence":83,"closing":"可決。MELCHIORの理屈も、CASPERの本音も、頭ごなしに否定はしない。でも私は、人の善意と可能性を信じることを、どうしてもやめられないの。待つことで誰も傷つかず、皆が自分の力を取り戻せるのなら、それが一番美しい結末でしょう。だから私は、迷わず延期を支持します。"}'}]
+  },
+  cas:{
+    open:[{role:'user',content:UEX.open},{role:'assistant',content:'{"vote":"可決","confidence":77,"statement":"可決。だって疲れたまま動くなんて、ちっとも楽しくないもの。一日あれば気分も上がるし、おいしいところだけ味わえる。きれいごとは抜きにしましょう——得で、楽しくて、気持ちいい。私が動く理由なんて、いつだってそれで十分でしょう？我慢なんて、私の趣味じゃないの。","reason":"自分が得で、楽しくて気持ちいいから。"}'}],
+    reb:[{role:'user',content:UEX.reb},{role:'assistant',content:'{"target":"BALTHASAR","rebuttal":"ねえBALTHASAR、その『みんなを信じる』ってお話、聞いてるとあくびが出ちゃう。人は善い？まさか。みんな結局は自分の欲で動くのよ——ただ私みたいに正直じゃないだけ。理想じゃお腹も心も満たされないわ。私は欲しいものを、欲しいときに、いちばん気持ちのいい形でいただくの。我慢ばかりの人生なんて、退屈で死んじゃう。"}'}],
+    fin:[{role:'user',content:UEX.fin},{role:'assistant',content:'{"vote":"可決","confidence":75,"closing":"可決。MELCHIORの分別もBALTHASARの理想も、私には窮屈なだけ。延期は楽で、気分が良くて、私が得をする——それ以上の理由がいる？欲しい快楽は逃さない、それが私の流儀なの。だから迷わず延期に賛成するわ。"}'}]
+  }
+};
+function extractJSON(t){
+  if(!t)return null;
+  t=String(t).replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/<think>[\s\S]*$/i,'').trim();
+  if(!t)return null;
+  // 最初のバランスした {...} だけを取り出す（後続の余計な } { を拾わない）
+  const s=t.indexOf('{');
+  if(s>=0){
+    let depth=0,inStr=false,esc=false;
+    for(let i=s;i<t.length;i++){
+      const ch=t[i];
+      if(inStr){ if(esc)esc=false; else if(ch==='\\')esc=true; else if(ch==='"')inStr=false; }
+      else{ if(ch==='"')inStr=true; else if(ch==='{')depth++;
+        else if(ch==='}'){depth--; if(depth===0){ try{return JSON.parse(t.slice(s,i+1));}catch(e){break;} }} }
+    }
+  }
+  // フォールバック1：途切れた/壊れたJSONでも各フィールドの本文だけ正規表現で救出（断片混入を防ぐ）
+  const grab=key=>{const m=t.match(new RegExp('"'+key+'"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)'));
+    if(!m)return undefined;return m[1].replace(/\\"/g,'"').replace(/\\n/g,' ').replace(/[\s　]+$/,'').trim()||undefined;};
+  const vRaw=(t.match(/"vote"\s*:\s*"?\s*(可決|否決|賛成|反対)/)||[])[1];
+  const st=grab('statement'),rb=grab('rebuttal'),cl=grab('closing'),rs=grab('reason');
+  const tgt=(t.match(/"target"\s*:\s*"?\s*(MELCHIOR|BALTHASAR|CASPER)/i)||[])[1];
+  if(vRaw||st||rb||cl){
+    const vote=vRaw?((vRaw==='否決'||vRaw==='反対')?'否決':'可決'):(/否決|反対|却下/.test(t)&&!/可決|賛成|承認/.test(t)?'否決':'可決');
+    return {vote,statement:st,reason:rs,rebuttal:rb,closing:cl,target:tgt,confidence:60};
+  }
+  // フォールバック2：キーワードで賛否だけ救済
+  const vote=/否決|反対|却下|不可/.test(t)&&!/可決|賛成|承認/.test(t)?'否決':(/可決|賛成|承認/.test(t)?'可決':null);
+  if(!vote)return null;
+  const body=t.replace(/[{}"\[\]]/g,'').trim().slice(0,220);
+  return {vote,statement:body,reason:'',rebuttal:body,closing:body,confidence:60};
+}
+// 文章の結論とvoteが食い違うとき、文章（特に結論＝末尾）に合わせて賛否を補正
+const _yesRe=/(可決|賛成|承認|肯定|支持|許可してよい|許可する|許可すべき(?!でない)|実行すべき|やるべき|進めるべき|行うべき|やってみ|認めるべき)/;
+const _noRe=/(否決|反対|却下|否定|棄却|認められない|認めない|許可しない|許可できない|許可すべきでない|中止|やめるべき|やめておく|見送|阻止|すべきでない|すべきではない|べきではない|控えるべき)/;
+function reconcileVote(v,text){
+  if(!text)return v;
+  // 最後に出現した賛否キーワードを結論とみなす（日本語は結論が後ろに来る）
+  let lastYes=-1,lastNo=-1,m;
+  const yg=new RegExp(_yesRe.source,'g'),ng=new RegExp(_noRe.source,'g');
+  while((m=yg.exec(text)))lastYes=m.index;
+  while((m=ng.exec(text)))lastNo=m.index;
+  if(lastYes<0&&lastNo<0)return v; // 判別不能ならvoteを尊重
+  if(lastNo<0)return true;
+  if(lastYes<0)return false;
+  return lastYes>lastNo;
+}
+// 日本語（ひらがな/カタカナ）を含むか
+function looksJapanese(s){return /[ぁ-んァ-ヴ゛゜ー]/.test(s||'');}
+// LLM出力の掃除：HTMLタグ・Markdown装飾を除去し、長すぎる場合は文末で打ち切る
+function clean(s,max){
+  if(s==null)return '';
+  s=String(s).replace(/<[^>]{0,200}>/g,' ')
+             .replace(/\*\*|__|`{1,3}/g,'')
+             .replace(/\s+/g,' ').trim();
+  max=max||300;
+  if(s.length>max){
+    const cut=s.slice(0,max),i=cut.lastIndexOf('。');
+    s=(i>80)?cut.slice(0,i+1):cut.replace(/[、。，,．\s]+$/,'')+'…';
+  }
+  return s;
+}
+// 文章の冒頭が「可決」「否決」で始まるか（最優先で賛否に採用）
+function leadVerdict(text){
+  if(!text)return null;
+  const h=String(text).slice(0,14).replace(/^[\s　「『（(\["']+/,'');
+  // 区切り記号が続く場合のみ“明示の結論”。「可決できるわけじゃない」等の誤検出を防ぐ
+  if(/^(可決|賛成|承認|肯定)\s*[。．.!！?？、,:：\-—」』）)\]"']/.test(h))return true;
+  if(/^(否決|反対|却下|否定|棄却|不可)\s*[。．.!！?？、,:：\-—」』）)\]"']/.test(h))return false;
+  return null;
+}
+// クラウド(Gemini)はレート制限回避のため直列化＋最低間隔で実行（429が出たら間隔を自動で拡大）
+let _gemChain=Promise.resolve(),_gemLast=0,_gemMinInterval=4200; // 初期≒14RPM以下（安全側）
+function geminiThrottle(fn){
+  const run=async()=>{
+    const wait=Math.max(0,_gemMinInterval-(performance.now()-_gemLast));
+    if(wait>0)await sleep(wait);
+    _gemLast=performance.now();
+    return await fn();
+  };
+  const p=_gemChain.then(run,run);
+  _gemChain=p.catch(()=>{});
+  return p;
+}
+async function llmChat(messages,opt){
+  opt=opt||{};
+  if(ENGINE.provider==='gemini')return geminiThrottle(()=>llmGemini(messages,opt));
+  const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),opt.timeout||200000);
+  linkAbort(ctrl);
+  try{
+    const body={model:ENGINE.model,messages,stream:false,keep_alive:'30m',
+      options:{temperature:opt.temperature!=null?opt.temperature:0.7,num_predict:opt.num_predict||220,repeat_penalty:1.15,repeat_last_n:256}};
+    if(opt.format)body.format=opt.format;
+    if(!ENGINE.noThink)body.think=false; // 推論モデル(Qwen3等)の思考出力を抑止
+    const post=()=>fetch(ENGINE.endpoint+'/api/chat',{method:'POST',signal:ctrl.signal,
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    let res=await post();
+    if(!res.ok&&res.status===400&&body.think===false){ // think非対応モデルなら外して再試行
+      ENGINE.noThink=true;delete body.think;res=await post();
+    }
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const j=await res.json();return (j.message&&j.message.content)||'';
+  }finally{clearTimeout(to);}
+}
+// 利用可能モデル一覧から最新世代の flash-lite → flash を自動選択（モデル名の直書きに依存しない）
+function pickGeminiModel(list,want){
+  if(want&&list.includes(want))return want;
+  const bad=/preview|exp|thinking|image|audio|live|tts|embedding|vision|learnlm|aqa|robotics/i;
+  const ver=n=>{const m=n.match(/gemini-(\d+(?:\.\d+)?)/);return m?parseFloat(m[1]):0;};
+  const c=list.filter(n=>/^gemini-/.test(n)&&/flash/.test(n)&&!bad.test(n));
+  // 新しい世代を優先。同世代ならLiteより品質の高い通常Flashを選ぶ
+  c.sort((a,b)=>ver(b)-ver(a)||(/flash-lite/.test(a)?1:0)-(/flash-lite/.test(b)?1:0)||a.length-b.length);
+  const pool=c;
+  return pool.sort((a,b)=>ver(b)-ver(a)||a.length-b.length)[0]||want||'gemini-2.5-flash-lite';
+}
+// クラウド：Google Gemini（ブラウザから直接・無料枠）
+async function llmGemini(messages,opt){
+  const sys=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
+  const contents=messages.filter(m=>m.role!=='system').map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]}));
+  const gc={temperature:opt.temperature!=null?opt.temperature:0.7,maxOutputTokens:(opt.num_predict||460)+120,frequencyPenalty:0.35,presencePenalty:0.3};
+  if(opt.format==='json')gc.responseMimeType='application/json';
+  const body={contents,generationConfig:gc};
+  if(sys)body.systemInstruction={parts:[{text:sys}]};
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${ENGINE.model||CLOUD.model}:generateContent?key=${encodeURIComponent(CLOUD.key)}`;
+  let lastErr;
+  // 無料枠のレート制限(429)等は自動リトライ（Retry-After尊重＋指数バックオフ）
+  for(let attempt=0;attempt<6;attempt++){
+    const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),opt.timeout||60000);
+    linkAbort(ctrl);
+    try{
+      const res=await fetch(url,{method:'POST',signal:ctrl.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(res.status===429||res.status===503||res.status===500){
+        let bodyTxt='';try{bodyTxt=await res.text();}catch(e){}
+        if(res.status===429){
+          _gemMinInterval=Math.min(_gemMinInterval+1500,12000); // 以後の間隔を自動拡大
+          if(/per ?day|perday|requestsperday|daily|一日|日次/i.test(bodyTxt)){
+            // 日次上限はリトライ無意味 → 即終了（catchに拾わせないためbreak）
+            clearTimeout(to);
+            lastErr=new Error('Gemini無料枠の【1日の上限】に到達しました。米国太平洋時間の0時(日本の昼頃)にリセットされます。それまではローカル(Ollama)を使うか、時間をおいてください。');
+            break;
+          }
+        }
+        let ra=parseFloat(res.headers.get('retry-after'))*1000;
+        const m=bodyTxt.match(/retryDelay"?\s*[:：]\s*"?(\d+(?:\.\d+)?)s/i);
+        if(m)ra=parseFloat(m[1])*1000;
+        if(!ra||isNaN(ra))ra=3000*Math.pow(2,attempt); // 3,6,12,24,48s
+        ra=Math.min(ra,45000);
+        lastErr=new Error('Gemini '+res.status+'（混雑/レート制限）');clearTimeout(to);await sleep(ra);continue;
+      }
+      if(res.status===400 && (gc.frequencyPenalty!==undefined||gc.presencePenalty!==undefined)){
+        // ペナルティ未対応モデルの可能性 → 外して即再試行
+        delete gc.frequencyPenalty;delete gc.presencePenalty;clearTimeout(to);continue;
+      }
+      if(!res.ok){let t='';try{t=await res.text();}catch(e){} clearTimeout(to); throw new Error('Gemini HTTP '+res.status+' '+t.slice(0,150));}
+      const j=await res.json();clearTimeout(to);
+      const cand=j.candidates&&j.candidates[0];
+      return (cand&&cand.content&&cand.content.parts&&cand.content.parts.map(p=>p.text||'').join(''))||'';
+    }catch(e){lastErr=e;clearTimeout(to);if(attempt<5)await sleep(1500*(attempt+1));}
+  }
+  throw lastErr||new Error('Gemini 応答失敗');
+}
+async function detectLLM(){
+  const em=document.getElementById('engineMode'),hint=document.getElementById('engineHint');
+  em.className='em-detecting';em.textContent='検出中…';hint.textContent='';
+  askBtn.disabled=true;askBtn.textContent='検出中…';
+  const cloudFirst = CLOUD.prefer && CLOUD.key;  // 「Ollamaがあってもクラウドを使う」
+  // 1) ローカルOllama（クラウド優先がOFFのとき）
+  if(!cloudFirst){
+   try{
+    const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),2500);
+    const res=await fetch(ENGINE.endpoint+'/api/tags',{signal:ctrl.signal});clearTimeout(to);
+    if(!res.ok)throw new Error('tags '+res.status);
+    const j=await res.json();const models=(j.models||[]).map(m=>m.name);
+    if(!models.length)throw new Error('no-model');
+    // 役割演技に強い大きめモデルを優先（7B級 → 中型 → 軽量）
+    // 新しい世代を優先しつつ、VRAM6GB級に収まるサイズを上位に（前方一致）
+    const pref=['qwen3.5:4b','qwen3.5:2b','qwen3:4b','gemma3:4b','qwen3:8b','qwen3.5','qwen3','gemma4','gemma3',
+                'qwen2.5:7b','llama3.3','qwen2.5','llama3.2','phi4','mistral'];
+    let chosen=null;
+    for(const p of pref){const hit=models.find(m=>m.startsWith(p));if(hit){chosen=hit;break;}}
+    ENGINE.model=chosen||models[0];
+    ENGINE.provider='ollama';ENGINE.mode='real';
+    em.className='em-real';em.textContent=`本物モード（ローカル: ${ENGINE.model}）`;
+    hint.textContent='各MAGIが実際のLLMとして推論・反論・再評価します。';
+    askBtn.disabled=false;askBtn.textContent='審議開始';
+    return;
+   }catch(e){}
+  }
+  // 2) クラウド（Gemini）— キーが保存済みなら検証
+  if(CLOUD.key){
+    try{
+      const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),6000);
+      const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(CLOUD.key)}`,{signal:ctrl.signal});clearTimeout(to);
+      if(!res.ok)throw new Error('key '+res.status);
+      const jm=await res.json();
+      const avail=(jm.models||[]).filter(m=>!m.supportedGenerationMethods||m.supportedGenerationMethods.includes('generateContent'))
+        .map(m=>String(m.name||'').replace(/^models\//,''));
+      ENGINE.model=pickGeminiModel(avail,CLOUD.model);
+      ENGINE.provider='gemini';ENGINE.mode='real';
+      _gemMinInterval=/flash-lite/.test(ENGINE.model)?4200:6500; // Lite=15RPM / Flash=10RPM 相当に自動調整
+      em.className='em-cloud';em.textContent=`クラウドモード（Gemini: ${ENGINE.model}）`;
+      hint.textContent='インターネット経由でGeminiが各MAGIを推論します（PC不要）。';
+      askBtn.disabled=false;askBtn.textContent='審議開始';
+      return;
+    }catch(e){
+      ENGINE.mode='off';em.className='em-sim';em.textContent='クラウド接続失敗（キー/モデルを確認）';
+      hint.textContent='APIキーかモデル名が正しくない可能性。クラウド設定を見直して「保存して再検出」。';
+      askBtn.disabled=true;askBtn.textContent='接続失敗';
+      return;
+    }
+  }
+  // 3) どちらも無い
+  ENGINE.mode='off';em.className='em-sim';em.textContent='エンジン未接続';
+  hint.textContent='自宅：PCでOllamaを起動。外出/PCなし：下の「クラウド設定」で無料のGemini APIキーを保存してください。';
+  askBtn.disabled=true;askBtn.textContent='エンジン未接続';
+}
+async function agentTurn(k,sys,history,userMsg,opt){
+  opt=opt||{};
+  if(aborted())throw new Error('__ABORT__');
+  let out='',um=userMsg;
+  for(let i=0;i<2;i++){
+    const msgs=[{role:'system',content:sys+'\n'+COMMON_SYS},...(opt.fewshot||[]),...history,{role:'user',content:um}];
+    out=await llmChat(msgs,{format:opt.format,temperature:opt.temperature,num_predict:opt.num_predict});
+    // 日本語以外（ひらがな/カタカナ無し）なら一度だけ強めに言い直させる
+    if(looksJapanese(out))break;
+    um=userMsg+'\n※前回の回答が日本語ではありませんでした。必ず自然な日本語（ひらがな・カタカナを含む）だけで、最初から答え直してください。中国語・英語は禁止。';
+  }
+  history.push({role:'user',content:userMsg},{role:'assistant',content:out});
+  return out;
+}
+const NP_REAL=460; // 生成長（250字程度＋JSON構文ぶんの余裕。途中切れ防止）
+const rmap={MELCHIOR:'mel',BALTHASAR:'bal',CASPER:'cas'};
+async function runPhasesReal(q){
+  const R={};const hist={};order.forEach(k=>hist[k]=[]);
+  // PHASE 1 意見表明（厚めに論じる・3機並列で実推論）
+  phase('意見表明','OPENING');logPhase('第一段階：意見表明（LLM）','OPENING');
+  order.forEach(k=>setBlock(k,{cls:'thinking'}));
+  const p1=await Promise.all(order.map(k=>agentTurn(k,PERSONA_SYS[k],hist[k],
+    `議題：「${q}」\nあなたの人格・口調を全開にして賛否を判断し、自分なりの分析と意見を具体的に論じよ。\n【必須】statementは必ず冒頭を「可決。」または「否決。」で始め、その直後から理由・主張を続けること。voteもその結論と必ず一致させること。\nvote(可決/否決)・confidence(0〜100の整数)・statement(冒頭に賛否＋あなたの主張・具体例・自我を込めて100〜250字)・reason(核心を一言で・20〜40字)のJSONで答えよ。一般論や要約で済ませない。`,
+    {format:'json',fewshot:PFEW[k].open,temperature:TEMP[k],num_predict:NP_REAL})));
+  order.forEach((k,i)=>{const j=extractJSON(p1[i])||{vote:'否決',statement:'(応答解析失敗)',reason:'',confidence:50};
+    const lv=leadVerdict(clean(j.statement)); // 冒頭の賛否を最優先
+    const vote=(lv!==null)?lv:(j.vote?j.vote==='可決':reconcileVote(false,clean(j.statement)+' '+clean(j.reason,60)));
+    R[k]={vote,score:(j.confidence||60)/100,statement:clean(j.statement),reason:clean(j.reason,60)};});
+  for(const k of order){
+    setBlock(k,{cls:R[k].vote?'yes':'no',tentative:true}); // 先に賛否を確定（発言の色を正しく固定）
+    await aSay(k,R[k].statement||'(無言)');
+    if(R[k].reason){logSub(`根拠：${R[k].reason}　(確信度 ${Math.round(R[k].score*100)}%)`);await sleep(100);}
+    await sleep(100);
+  }
+  let yesN=order.filter(k=>R[k].vote).length;
+  logSys(`暫定集計 … 可決 ${yesN} / 否決 ${3-yesN}　意見は${yesN===3||yesN===0?'一致':'割れている'}。`);await sleep(250);
+
+  // PHASE 2 討論（複数巡で深掘り：割れたら2巡、一致なら1巡で各自が論拠を強化）
+  const splitInit=(yesN!==0&&yesN!==3);
+  const ROUNDS=splitInit?2:1;
+  for(let rnd=1;rnd<=ROUNDS;rnd++){
+    const y=order.filter(k=>R[k].vote).length;const split=(y!==0&&y!==3);
+    phase('討論','CROSS-DEBATE');logPhase(`第二段階：討論 第${rnd}巡（LLM）`,'CROSS-DEBATE R'+rnd);
+    order.forEach(k=>setBlock(k,{cls:'thinking'}));
+    const board=order.map(k=>`${SHORT[k]}(${P[k].role})：${verdictJP(R[k].vote)} — ${R[k].statement}`).join('\n');
+    const focus={1:'今回は「相手の主張の最も弱い前提」を一点だけ突くことに集中せよ。',
+                 2:'今回は前巡とは別の新しい観点・具体例を一つ加えつつ、議論最大の争点に的を絞り、決定打となる一言や落としどころを示せ（同じ論点の蒸し返しは禁止）。'}[rnd]||'新しい角度を一つ加えよ。';
+    const noRepeat='【重要】これまでに自分が述べた言い回し・論拠の繰り返しは禁止。毎回必ず新しい論点か新しい言葉を加え、同じことを言い換えただけの発言はしないこと。';
+    const ask=split
+      ? `現在の全機の立場：\n${board}\nあなた以外で最も意見が対立する1機を名指しで選び、その主張の弱点を具体的に突いて反論しつつ、自分の論拠と個性をさらに前面に出して深く展開せよ。相手の発言に具体的に言及すること。${focus}\n${noRepeat}\ntarget(MELCHIOR/BALTHASAR/CASPERのいずれか)・rebuttal(あなたの口調・分析・意見を込めて100〜250字)のJSONで答えよ。`
+      : `現在の全機の立場：\n${board}\n意見は一致しているが、あなたの立場の根拠をさらに掘り下げ、想定される反対論にも先回りして、あなたらしく論じよ。${focus}\n${noRepeat}\ntarget(関連する他機を1つ)・rebuttal(あなたの口調・分析・意見を込めて100〜250字)のJSONで答えよ。`;
+    const reb=await Promise.all(order.map(k=>agentTurn(k,PERSONA_SYS[k],hist[k],ask,
+      {format:'json',fewshot:PFEW[k].reb,temperature:TEMP[k],num_predict:NP_REAL})));
+    for(let i=0;i<order.length;i++){const k=order[i];const j=extractJSON(reb[i])||{};
+      const tgt=rmap[j.target]&&rmap[j.target]!==k?rmap[j.target]:(order.find(o=>o!==k&&R[o].vote!==R[k].vote)||order.find(o=>o!==k));
+      await aSay(k,clean(j.rebuttal||reb[i])||'(無言)',tgt);}
+    if(rnd<ROUNDS){logSys('討論を継続 …');await sleep(200);}
+  }
+
+  // PHASE 3 再評価 → 最終投票（全討論を踏まえ翻意可）
+  phase('最終投票','FINAL VOTE');logPhase('第三段階：再評価 → 最終投票（LLM）','FINAL VOTE');
+  order.forEach(k=>setBlock(k,{cls:'thinking'}));
+  const fin=await Promise.all(order.map(k=>agentTurn(k,PERSONA_SYS[k],hist[k],
+    `ここまでの全討論を踏まえ、最終的な投票を決定せよ。他機の論に説得されたなら遠慮なく考えを変えてよい。誰のどの発言が効いたかにも触れてよい。\n【必須】closingは必ず冒頭を「可決。」または「否決。」で始め、その直後から結論・理由を続けること。voteもそれと必ず一致させること。既に述べた言い回しの繰り返しは避ける。\nvote(可決/否決)・confidence(0〜100の整数)・closing(冒頭に賛否＋理由・あなたの口調で100〜250字)のJSONで答えよ。`,
+    {format:'json',fewshot:PFEW[k].fin,temperature:TEMP[k],num_predict:NP_REAL})));
+  for(let i=0;i<order.length;i++){const k=order[i];const j=extractJSON(fin[i])||{};
+    const baseVote=j.vote?j.vote==='可決':R[k].vote;
+    const lv=leadVerdict(clean(j.closing)); // 冒頭の賛否を最優先
+    const newVote=(lv!==null)?lv:(j.vote?j.vote==='可決':reconcileVote(baseVote,clean(j.closing)));const flipped=newVote!==R[k].vote;
+    R[k].vote=newVote;R[k].flipped=flipped;
+    setBlock(k,{cls:newVote?'yes':'no'});
+    await aSay(k,(clean(j.closing)||'最終判定：'+verdictJP(newVote))+(flipped?'（再評価により変更）':''),null,300);}
+  return R;
+}
+askBtn.addEventListener('click',deliberate);
+stopBtn.addEventListener('click',()=>{if(ABORT){ABORT.abort();stopBtn.disabled=true;stopBtn.textContent='中止中…';}});
+qInput.addEventListener('keydown',e=>{if(e.key==='Enter')deliberate();});
+document.getElementById('redetect').addEventListener('click',detectLLM);
+// クラウド設定の初期化・保存
+(function(){
+  const kEl=document.getElementById('cloudKey'),mEl=document.getElementById('cloudModel'),sEl=document.getElementById('cloudSave'),pEl=document.getElementById('cloudPrefer');
+  if(kEl)kEl.value=CLOUD.key; if(mEl)mEl.value=CLOUD.model||''; if(pEl)pEl.checked=!!CLOUD.prefer;
+  if(sEl)sEl.addEventListener('click',()=>{
+    CLOUD.key=(kEl.value||'').trim();
+    CLOUD.model=(mEl.value||'').trim();
+    CLOUD.prefer=!!(pEl&&pEl.checked);
+    try{localStorage.setItem('magi_cloud',JSON.stringify(CLOUD));}catch(e){}
+    detectLLM();
+  });
+  if(pEl)pEl.addEventListener('change',()=>{
+    CLOUD.prefer=pEl.checked;
+    try{localStorage.setItem('magi_cloud',JSON.stringify(CLOUD));}catch(e){}
+    detectLLM();
+  });
+})();
+detectLLM();
+
+const EX=['第3新東京市の市民を守るため避難計画を実行すべきか','使徒への攻撃を即時に開始すべきか',
+  'データに基づき最適な戦術配置に変更すべきか','今日は仕事を休んで自由に過ごしたい、許可すべきか',
+  '感情を抑えてデータ通りに行動すべきか','効率を最優先し危険な作戦を強行すべきか'];
+const exWrap=document.getElementById('examples');
+EX.forEach(t=>{const b=document.createElement('button');b.textContent=t.length>15?t.slice(0,14)+'…':t;b.title=t;
+  b.onclick=()=>{qInput.value=t;deliberate();};exWrap.appendChild(b);});
+logSys('MAGI SYSTEM READY. 議題を入力し「審議開始」を押してください。');
+</script>
+</body>
+</html>
