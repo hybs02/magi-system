@@ -132,20 +132,23 @@
   .c-mel{color:#ff7a85;}.c-bal{color:#ff9aa2;}.c-cas{color:#5ef0f0;}
   .c-sys{color:var(--redglow);}.c-warn{color:#ffd23f;}.c-ok{color:var(--green);}.c-ng{color:var(--hot);}
   .dimtxt{color:var(--dim);}
-  .engine{margin-top:10px;font-size:11px;color:#b88;letter-spacing:.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .engine{margin-top:10px;font-size:11px;color:#b88;letter-spacing:.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:"Consolas",monospace;}
   .em-real{color:var(--green);font-weight:bold;}
   .em-sim{color:#ffd23f;font-weight:bold;}
   .em-detecting{color:#888;}
   .mini{background:transparent;border:1px solid var(--dim);color:#b8454d;font-size:10px;padding:3px 8px;letter-spacing:0;font-weight:normal;}
   .mini:hover{border-color:var(--red);color:var(--red);filter:none;}
-  .ehint{font-size:10px;color:#8a6;flex-basis:100%;line-height:1.5;margin-top:4px;}
+  .ehint{font-size:10px;color:#96555c;flex-basis:100%;line-height:1.6;margin-top:4px;font-family:"Consolas",monospace;letter-spacing:.3px;}
+  .sysnote{display:grid;gap:1px;margin-top:7px;}
+  .sysnote span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sysnote b{display:inline-block;min-width:34px;color:var(--dim);font-weight:bold;letter-spacing:1px;}
   .cloudbox{margin-top:10px;border:1px solid var(--dim);padding:6px 9px;}
-  .cloudbox summary{font-size:11px;color:#c98;cursor:pointer;letter-spacing:1px;}
+  .cloudbox summary{font-size:11px;color:#b8686f;cursor:pointer;letter-spacing:2px;font-family:"Consolas",monospace;}
   .cloudgrid{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
   .cloudgrid input{flex:1;min-width:120px;background:#0a0002;border:1px solid var(--dim);color:#ffb38a;padding:7px;font-family:inherit;font-size:12px;}
   .cloudgrid input:focus{outline:none;border-color:var(--red);}
   .em-cloud{color:#4fd0ff;font-weight:bold;}
-  .cloudpref{display:block;margin-top:8px;font-size:11px;color:#c98;cursor:pointer;}
+  .cloudpref{display:block;margin-top:8px;font-size:10px;color:#b8686f;cursor:pointer;font-family:"Consolas",monospace;letter-spacing:.5px;}
   .cloudpref input{vertical-align:middle;margin-right:5px;}
   footer{text-align:center;color:var(--dim);font-size:10px;letter-spacing:2px;padding:12px;
     border-top:1px solid var(--dim);margin-top:14px;font-family:"Consolas",monospace;}
@@ -208,19 +211,23 @@
           <button id="askBtn">審議開始</button><button id="stopBtn" class="stopbtn" hidden>中止</button>
         </div>
         <div class="examples" id="examples"></div>
-        <div class="engine" id="engineBar">推論エンジン：<span id="engineMode" class="em-detecting">検出中…</span>
+        <div class="engine" id="engineBar">ENGINE <span id="engineMode" class="em-detecting">検出中…</span>
           <button id="redetect" class="mini">再検出</button>
           <span id="engineHint" class="ehint"></span>
         </div>
         <details class="cloudbox">
-          <summary>☁ クラウド設定（PCが無い／外出先で使うとき）</summary>
+          <summary>▸ EXTERNAL LINK — 外部演算（PC不要）</summary>
           <div class="cloudgrid">
             <input type="password" id="cloudKey" placeholder="Gemini APIキーを貼り付け">
             <input type="text" id="cloudModel" placeholder="モデル名（空欄=最新を自動選択）">
             <button id="cloudSave" class="mini">保存して再検出</button>
           </div>
-          <label class="cloudpref"><input type="checkbox" id="cloudPrefer"> Ollamaがあってもクラウドを使う（PCで試すとき用）</label>
-          <div class="ehint">無料キーは Google AI Studio（aistudio.google.com/apikey）で取得。キーはこの端末内だけに保存され、外部送信はGeminiへのリクエストのみ。通常はOllamaが見つからない時に自動でクラウドを使います。</div>
+          <label class="cloudpref"><input type="checkbox" id="cloudPrefer"> LOCAL より EXTERNAL を優先</label>
+          <div class="ehint sysnote">
+            <span><b>KEY</b> aistudio.google.com/apikey — 無料</span>
+            <span><b>SEC</b> 端末内に保存／送信先は Gemini のみ</span>
+            <span><b>AUTO</b> LOCAL 未検出時に自動接続</span>
+          </div>
         </details>
       </div>
     </div>
@@ -513,7 +520,13 @@ function pickGeminiModel(list,want){
 async function llmGemini(messages,opt){
   const sys=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
   const contents=messages.filter(m=>m.role!=='system').map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]}));
-  const gc={temperature:opt.temperature!=null?opt.temperature:0.7,maxOutputTokens:(opt.num_predict||460)+120,frequencyPenalty:0.35,presencePenalty:0.3};
+  // Gemini 3系は思考を無効化できず、思考トークンが出力枠を消費して本文が途中で切れる。
+  // → 出力枠を厚めに確保し、思考は最小に抑える（2.5系は budget:0 / 3系は level:'low'）
+  const gen=parseFloat(((ENGINE.model||CLOUD.model||'').match(/gemini-(\d+(?:\.\d+)?)/)||[])[1]||0);
+  const gc={temperature:opt.temperature!=null?opt.temperature:0.7,
+    maxOutputTokens:Math.max(2048,(opt.num_predict||460)*3),
+    frequencyPenalty:0.35,presencePenalty:0.3};
+  if(!ENGINE.noThinkCfg)gc.thinkingConfig=(gen>=3)?{thinkingLevel:'low'}:{thinkingBudget:0};
   if(opt.format==='json')gc.responseMimeType='application/json';
   const body={contents,generationConfig:gc};
   if(sys)body.systemInstruction={parts:[{text:sys}]};
@@ -543,14 +556,27 @@ async function llmGemini(messages,opt){
         ra=Math.min(ra,45000);
         lastErr=new Error('Gemini '+res.status+'（混雑/レート制限）');clearTimeout(to);await sleep(ra);continue;
       }
-      if(res.status===400 && (gc.frequencyPenalty!==undefined||gc.presencePenalty!==undefined)){
-        // ペナルティ未対応モデルの可能性 → 外して即再試行
-        delete gc.frequencyPenalty;delete gc.presencePenalty;clearTimeout(to);continue;
+      if(res.status===400){
+        // 未対応パラメータの可能性 → thinkingConfig → ペナルティ の順に外して再試行
+        let t='';try{t=await res.text();}catch(e){}
+        if(gc.thinkingConfig&&/thinking/i.test(t)){ENGINE.noThinkCfg=true;delete gc.thinkingConfig;clearTimeout(to);continue;}
+        if(gc.frequencyPenalty!==undefined||gc.presencePenalty!==undefined){
+          delete gc.frequencyPenalty;delete gc.presencePenalty;clearTimeout(to);continue;
+        }
+        if(gc.thinkingConfig){ENGINE.noThinkCfg=true;delete gc.thinkingConfig;clearTimeout(to);continue;}
+        clearTimeout(to);throw new Error('Gemini HTTP 400 '+t.slice(0,150));
       }
       if(!res.ok){let t='';try{t=await res.text();}catch(e){} clearTimeout(to); throw new Error('Gemini HTTP '+res.status+' '+t.slice(0,150));}
       const j=await res.json();clearTimeout(to);
       const cand=j.candidates&&j.candidates[0];
-      return (cand&&cand.content&&cand.content.parts&&cand.content.parts.map(p=>p.text||'').join(''))||'';
+      const text=(cand&&cand.content&&cand.content.parts&&cand.content.parts.map(p=>p.text||'').join(''))||'';
+      // 思考で出力枠を使い切って本文が途切れた場合は、枠を広げて一度だけやり直す
+      if(cand&&cand.finishReason==='MAX_TOKENS'&&text.length<400&&gc.maxOutputTokens<6144){
+        gc.maxOutputTokens=Math.min(gc.maxOutputTokens*2,6144);
+        if(gc.thinkingConfig&&gc.thinkingConfig.thinkingLevel)gc.thinkingConfig={thinkingLevel:'low'};
+        continue;
+      }
+      return text;
     }catch(e){lastErr=e;clearTimeout(to);if(attempt<5)await sleep(1500*(attempt+1));}
   }
   throw lastErr||new Error('Gemini 応答失敗');
@@ -577,7 +603,7 @@ async function detectLLM(){
     ENGINE.model=chosen||models[0];
     ENGINE.provider='ollama';ENGINE.mode='real';
     em.className='em-real';em.textContent=`本物モード（ローカル: ${ENGINE.model}）`;
-    hint.textContent='各MAGIが実際のLLMとして推論・反論・再評価します。';
+    hint.textContent='LOCAL 演算 — 無制限・端末内で完結';
     askBtn.disabled=false;askBtn.textContent='審議開始';
     return;
    }catch(e){}
@@ -595,19 +621,19 @@ async function detectLLM(){
       ENGINE.provider='gemini';ENGINE.mode='real';
       _gemMinInterval=/flash-lite/.test(ENGINE.model)?4200:6500; // Lite=15RPM / Flash=10RPM 相当に自動調整
       em.className='em-cloud';em.textContent=`クラウドモード（Gemini: ${ENGINE.model}）`;
-      hint.textContent='インターネット経由でGeminiが各MAGIを推論します（PC不要）。';
+      hint.textContent='EXTERNAL 演算 — Gemini 経由（PC不要）';
       askBtn.disabled=false;askBtn.textContent='審議開始';
       return;
     }catch(e){
       ENGINE.mode='off';em.className='em-sim';em.textContent='クラウド接続失敗（キー/モデルを確認）';
-      hint.textContent='APIキーかモデル名が正しくない可能性。クラウド設定を見直して「保存して再検出」。';
+      hint.textContent='KEY もしくは MODEL 名を確認 → 保存して再検出';
       askBtn.disabled=true;askBtn.textContent='接続失敗';
       return;
     }
   }
   // 3) どちらも無い
   ENGINE.mode='off';em.className='em-sim';em.textContent='エンジン未接続';
-  hint.textContent='自宅：PCでOllamaを起動。外出/PCなし：下の「クラウド設定」で無料のGemini APIキーを保存してください。';
+  hint.textContent='LOCAL: Ollama を起動 ／ EXTERNAL: 下記に Gemini KEY を登録';
   askBtn.disabled=true;askBtn.textContent='エンジン未接続';
 }
 async function agentTurn(k,sys,history,userMsg,opt){
