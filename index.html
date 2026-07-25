@@ -171,9 +171,6 @@
   .mini{background:transparent;border:1px solid var(--dim);color:#b8454d;font-size:10px;padding:3px 8px;letter-spacing:0;font-weight:normal;}
   .mini:hover{border-color:var(--red);color:var(--red);filter:none;}
   .ehint{font-size:10px;color:#96555c;flex-basis:100%;line-height:1.6;margin-top:4px;font-family:"Consolas",monospace;letter-spacing:.3px;}
-  .sysnote{display:grid;gap:1px;margin-top:7px;}
-  .sysnote span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .sysnote b{display:inline-block;min-width:34px;color:var(--dim);font-weight:bold;letter-spacing:1px;}
   .cloudbox{margin-top:10px;border:1px solid var(--dim);padding:6px 9px;}
   .cloudbox summary{font-size:11px;color:#b8686f;cursor:pointer;letter-spacing:2px;font-family:"Consolas",monospace;}
   .cloudgrid{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
@@ -295,26 +292,22 @@
       <div class="hd">■ 諮問入力<span class="en"> / PROPOSAL INPUT</span></div>
       <div class="bd">
         <div class="qrow">
-          <input type="text" id="question" list="qhist" placeholder="MAGIに諮る議題を入力（Ctrl+Enterで開始 / Escで中止）"><datalist id="qhist"></datalist>
-          <button id="askBtn">審議開始</button><button id="stopBtn" class="stopbtn" hidden>中止</button>
+          <input type="text" id="question" list="qhist" placeholder="MAGIに諮る議題を入力"><datalist id="qhist"></datalist>
+          <button id="askBtn" title="Ctrl+Enter で開始">審議開始</button><button id="stopBtn" class="stopbtn" title="Esc で中止" hidden>中止</button>
         </div>
         <div class="engine" id="engineBar">ENGINE <span id="engineMode" class="em-detecting">SCANNING…</span>
           <button id="redetect" class="mini">再検出</button>
           <span id="engineHint" class="ehint"></span>
         </div>
         <details class="cloudbox">
-          <summary>EXTERNAL LINK — 外部演算（PC不要）</summary>
+          <summary>EXTERNAL LINK</summary>
           <div class="cloudgrid">
-            <input type="password" id="cloudKey" placeholder="Gemini APIキーを貼り付け">
-            <input type="text" id="cloudModel" placeholder="モデル名（空欄=最新を自動選択）">
+            <input type="password" id="cloudKey" placeholder="Gemini APIキー">
+            <input type="text" id="cloudModel" placeholder="モデル名">
             <button id="cloudSave" class="mini">保存して再検出</button>
           </div>
-          <label class="cloudpref"><input type="checkbox" id="cloudPrefer"> LOCAL より EXTERNAL を優先</label>
-          <div class="ehint sysnote">
-            <span><b>KEY</b> aistudio.google.com/apikey — 無料</span>
-            <span><b>SEC</b> 端末内に保存／送信先は Gemini のみ</span>
-            <span><b>AUTO</b> LOCAL 未検出時に自動接続</span>
-          </div>
+          <label class="cloudpref"><input type="checkbox" id="cloudPrefer"> LOCAL があっても EXTERNAL を使う</label>
+          <div class="ehint">キーは端末内にのみ保存。取得: aistudio.google.com/apikey</div>
         </details>
       </div>
     </div>
@@ -347,7 +340,7 @@
  </div>
 </div>
 
-<footer>MAGI SYSTEM developed by Dr. NAOKO AKAGI &nbsp;|&nbsp; MELCHIOR / BALTHASAR / CASPER &nbsp;|&nbsp; UNAUTHORIZED ACCESS PROHIBITED</footer>
+<footer>MAGI SYSTEM developed by Dr. NAOKO AKAGI &nbsp;|&nbsp; UNAUTHORIZED ACCESS PROHIBITED</footer>
 
 <script>
 const pad=n=>String(n).padStart(2,'0');
@@ -755,7 +748,7 @@ async function detectLLM(){
     ENGINE.model=chosen||models[0];
     ENGINE.provider='ollama';ENGINE.mode='real';
     em.className='em-real';em.textContent=`LOCAL ▸ ${ENGINE.model}`;
-    hint.textContent='LOCAL 演算 — 無制限・端末内で完結';
+    hint.textContent='';
     askBtn.disabled=false;askBtn.textContent='審議開始';
     return;
    }catch(e){}
@@ -775,7 +768,7 @@ async function detectLLM(){
       ENGINE.provider='gemini';ENGINE.mode='real';
       _gemMinInterval=/flash-lite/.test(ENGINE.model)?4200:6500; // Lite=15RPM / Flash=10RPM 相当に自動調整
       em.className='em-cloud';em.textContent=`EXTERNAL ▸ ${ENGINE.model}`;
-      hint.textContent='EXTERNAL 演算 — Gemini 経由（PC不要）';
+      hint.textContent='';
       askBtn.disabled=false;askBtn.textContent='審議開始';
       return;
     }catch(e){
