@@ -139,7 +139,7 @@
   .summary .row .v{min-width:30px;font-weight:bold;}
   .summary .row .r{color:#c9c9c9;flex:1;}
   .summary .tot{margin-top:6px;padding-top:5px;border-top:1px solid var(--dim);font-size:12px;font-weight:bold;}
-
+
   .console{height:460px;overflow-y:auto;background:#0a0001;border:2px solid var(--dim);padding:10px;
     font-family:"Consolas",monospace;font-size:13px;line-height:1.5;color:#d8d8d8;}
   .console::-webkit-scrollbar{width:9px;}.console::-webkit-scrollbar-thumb{background:var(--dim);}
@@ -263,11 +263,11 @@
       <div class="kanji ketsugi">決議</div>
 
       <div class="info">
-        CODE : <span id="code">378</span><br>
-        FILE : MAGI_SYS<br>
-        EXTENTION : 2024<br>
-        EX_MODE : <span id="exmode">OFF</span><br>
-        PRIORITY : AAA
+        ENGINE : <span id="iEngine">------</span><br>
+        MODEL : <span id="iModel">------</span><br>
+        PHASE : <span id="iPhase">STANDBY</span><br>
+        VOTES : <span id="iVotes">- : -</span><br>
+        TIME : <span id="iTime">00:00</span>
       </div>
 
       <div class="vbox"><div class="vval" id="decText">━━</div></div>
@@ -302,12 +302,10 @@
         <details class="cloudbox">
           <summary>EXTERNAL LINK</summary>
           <div class="cloudgrid">
-            <input type="password" id="cloudKey" placeholder="Gemini APIキー">
-            <input type="text" id="cloudModel" placeholder="モデル名">
+            <input type="password" id="cloudKey" placeholder="Gemini APIキー" title="無料キー: aistudio.google.com/apikey ／ 端末内にのみ保存されます">
             <button id="cloudSave" class="mini">保存して再検出</button>
           </div>
           <label class="cloudpref"><input type="checkbox" id="cloudPrefer"> LOCAL があっても EXTERNAL を使う</label>
-          <div class="ehint">キーは端末内にのみ保存。取得: aistudio.google.com/apikey</div>
         </details>
       </div>
     </div>
@@ -389,13 +387,24 @@ function setBlock(key,opt){
   if(opt.cls)blk.classList.add(opt.cls);
   if(opt.tentative)blk.classList.add('tentative');
   if(opt.cls==='yes')VOTE[key]=true; else if(opt.cls==='no')VOTE[key]=false; // thinking/idleは現状維持
+  const y=order.filter(k=>VOTE[k]===true).length,n=order.filter(k=>VOTE[k]===false).length;
+  infoSet('iVotes',(y+n)?`${y} : ${n}`:'- : -');
 }
 const SHORT={mel:'MELCHIOR',bal:'BALTHASAR',cas:'CASPER'};
 let codeTimer=null;
-function startCode(){const el=document.getElementById('code');document.getElementById('exmode').textContent='ON';
-  codeTimer=setInterval(()=>{el.textContent=String(Math.floor(hash('c'+performance.now())*900+100));},90);}
-function stopCode(final){if(codeTimer)clearInterval(codeTimer);codeTimer=null;
-  document.getElementById('code').textContent=final;document.getElementById('exmode').textContent='OFF';}
+const infoSet=(k,v)=>{const el=document.getElementById(k);if(el)el.textContent=v;};
+function infoEngine(){
+  infoSet('iEngine',ENGINE.mode==='real'?(ENGINE.provider==='gemini'?'EXTERNAL':'LOCAL'):'OFFLINE');
+  infoSet('iModel',ENGINE.model?String(ENGINE.model).slice(0,14):'------');
+}
+function startCode(){
+  infoEngine();infoSet('iPhase','ANALYZING');infoSet('iVotes','- : -');
+  codeTimer=setInterval(()=>infoSet('iTime',stamp().split('.')[0]),500);
+}
+function stopCode(final){
+  if(codeTimer)clearInterval(codeTimer);codeTimer=null;
+  infoSet('iPhase',final);infoSet('iTime',T0?stamp().split('.')[0]:'00:00');
+}
 
 function reset(){
   VOTE.mel=VOTE.bal=VOTE.cas=null;
@@ -407,6 +416,7 @@ function reset(){
 const verdictJP=v=>v?'可決':'否決';
 function phase(jp,rom){
   statusTag.textContent=rom;
+  infoSet('iPhase',rom.replace('CROSS-DEBATE','DEBATE'));
   const n=/OPENING/.test(rom)?1:(/CROSS-DEBATE/.test(rom)?2:3);
   for(let i=1;i<=3;i++){
     const el=document.getElementById('st'+i);if(!el)continue;
@@ -462,7 +472,7 @@ async function deliberate(){
   await sleep(200);
   const yesN=order.filter(k=>R[k].vote).length;
   const approved=yesN>=2;const unanimous=(yesN===3||yesN===0);
-  stopCode(String(Math.floor(hash('f'+q)*900+100)));
+  stopCode(approved?'APPROVED':'DENIED');
   logRaw('lsys',`<span class="ts">[${stamp()}]</span><span class="tally">集計：可決 ${yesN} ／ 否決 ${3-yesN}　（${unanimous?'全会一致':'多数決'}）</span>`);await sleep(420);
 
   const dt=document.getElementById('decText');
@@ -749,7 +759,7 @@ async function detectLLM(){
     ENGINE.provider='ollama';ENGINE.mode='real';
     em.className='em-real';em.textContent=`LOCAL ▸ ${ENGINE.model}`;
     hint.textContent='';
-    askBtn.disabled=false;askBtn.textContent='審議開始';
+    askBtn.disabled=false;askBtn.textContent='審議開始';infoEngine();
     return;
    }catch(e){}
   }
@@ -769,7 +779,7 @@ async function detectLLM(){
       _gemMinInterval=/flash-lite/.test(ENGINE.model)?4200:6500; // Lite=15RPM / Flash=10RPM 相当に自動調整
       em.className='em-cloud';em.textContent=`EXTERNAL ▸ ${ENGINE.model}`;
       hint.textContent='';
-      askBtn.disabled=false;askBtn.textContent='審議開始';
+      askBtn.disabled=false;askBtn.textContent='審議開始';infoEngine();
       return;
     }catch(e){
       ENGINE.mode='off';em.className='em-off';em.textContent='LINK ERROR';
@@ -935,11 +945,10 @@ qInput.addEventListener('keydown',e=>{if(e.key==='Enter')deliberate();});
 document.getElementById('redetect').addEventListener('click',detectLLM);
 // クラウド設定の初期化・保存
 (function(){
-  const kEl=document.getElementById('cloudKey'),mEl=document.getElementById('cloudModel'),sEl=document.getElementById('cloudSave'),pEl=document.getElementById('cloudPrefer');
-  if(kEl)kEl.value=CLOUD.key; if(mEl)mEl.value=CLOUD.model||''; if(pEl)pEl.checked=!!CLOUD.prefer;
+  const kEl=document.getElementById('cloudKey'),sEl=document.getElementById('cloudSave'),pEl=document.getElementById('cloudPrefer');
+  if(kEl)kEl.value=CLOUD.key; if(pEl)pEl.checked=!!CLOUD.prefer;
   if(sEl)sEl.addEventListener('click',()=>{
     CLOUD.key=(kEl.value||'').trim();
-    CLOUD.model=(mEl.value||'').trim();
     CLOUD.prefer=!!(pEl&&pEl.checked);
     try{localStorage.setItem('magi_cloud',JSON.stringify(CLOUD));}catch(e){}
     detectLLM();
