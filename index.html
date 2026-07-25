@@ -506,15 +506,30 @@ async function llmChat(messages,opt){
   }finally{clearTimeout(to);}
 }
 // 利用可能モデル一覧から最新世代の flash-lite → flash を自動選択（モデル名の直書きに依存しない）
-function pickGeminiModel(list,want){
-  if(want&&list.includes(want))return want;
+// 利用可能モデルを優先順に並べる。無料枠の上限はモデル単位なので、
+// 上限に達したら次の候補へ自動で切り替えて審議を継続できるようにする。
+function geminiPool(list,want){
   const bad=/preview|exp|thinking|image|audio|live|tts|embedding|vision|learnlm|aqa|robotics/i;
   const ver=n=>{const m=n.match(/gemini-(\d+(?:\.\d+)?)/);return m?parseFloat(m[1]):0;};
   const c=list.filter(n=>/^gemini-/.test(n)&&/flash/.test(n)&&!bad.test(n));
-  // 新しい世代を優先。同世代ならLiteより品質の高い通常Flashを選ぶ
-  c.sort((a,b)=>ver(b)-ver(a)||(/flash-lite/.test(a)?1:0)-(/flash-lite/.test(b)?1:0)||a.length-b.length);
-  const pool=c;
-  return pool.sort((a,b)=>ver(b)-ver(a)||a.length-b.length)[0]||want||'gemini-2.5-flash-lite';
+  // 1議題で約12回呼ぶため、1日の上限が大きい Flash-Lite を優先（Lite≒1000RPD / Flash≒250RPD）。
+  // その中で新しい世代を選ぶ。
+  c.sort((a,b)=>(/flash-lite/.test(b)?1:0)-(/flash-lite/.test(a)?1:0)||ver(b)-ver(a)||a.length-b.length);
+  if(want){const i=c.indexOf(want); if(i>0)c.unshift(c.splice(i,1)[0]); else if(i<0)c.unshift(want);}
+  return c;
+}
+function pickGeminiModel(list,want){return geminiPool(list,want)[0]||want||'gemini-2.5-flash-lite';}
+// 本日の上限に達したモデルを避けて次の候補へ切り替える
+function switchCloudModel(){
+  ENGINE.exhausted=ENGINE.exhausted||new Set();
+  ENGINE.exhausted.add(ENGINE.model);
+  const next=(ENGINE.cloudPool||[]).find(m=>!ENGINE.exhausted.has(m));
+  if(!next)return null;
+  const prev=ENGINE.model;ENGINE.model=next;
+  _gemMinInterval=/flash-lite/.test(next)?4200:6500;
+  const em=document.getElementById('engineMode');if(em)em.textContent=`EXTERNAL ▸ ${next}`;
+  logSys(`⚠ ${prev} が本日の無料枠上限に到達 → ${next} に切替えて継続します`);
+  return next;
 }
 // クラウド：Google Gemini（ブラウザから直接・無料枠）
 async function llmGemini(messages,opt){
@@ -522,30 +537,38 @@ async function llmGemini(messages,opt){
   const contents=messages.filter(m=>m.role!=='system').map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]}));
   // Gemini 3系は思考を無効化できず、思考トークンが出力枠を消費して本文が途中で切れる。
   // → 出力枠を厚めに確保し、思考は最小に抑える（2.5系は budget:0 / 3系は level:'low'）
-  const gen=parseFloat(((ENGINE.model||CLOUD.model||'').match(/gemini-(\d+(?:\.\d+)?)/)||[])[1]||0);
   const gc={temperature:opt.temperature!=null?opt.temperature:0.7,
     maxOutputTokens:Math.max(2048,(opt.num_predict||460)*3),
     frequencyPenalty:0.35,presencePenalty:0.3};
-  if(!ENGINE.noThinkCfg)gc.thinkingConfig=(gen>=3)?{thinkingLevel:'low'}:{thinkingBudget:0};
   if(opt.format==='json')gc.responseMimeType='application/json';
   const body={contents,generationConfig:gc};
   if(sys)body.systemInstruction={parts:[{text:sys}]};
-  const url=`https://generativelanguage.googleapis.com/v1beta/models/${ENGINE.model||CLOUD.model}:generateContent?key=${encodeURIComponent(CLOUD.key)}`;
+  // モデルは途中で切り替わり得るので、URLと思考設定は毎回その時点のモデルで組み立てる
+  const urlOf=()=>`https://generativelanguage.googleapis.com/v1beta/models/${ENGINE.model||CLOUD.model}:generateContent?key=${encodeURIComponent(CLOUD.key)}`;
+  const applyThinking=()=>{
+    if(ENGINE.noThinkCfg){delete gc.thinkingConfig;return;}
+    const gen=parseFloat(((ENGINE.model||CLOUD.model||'').match(/gemini-(\d+(?:\.\d+)?)/)||[])[1]||0);
+    gc.thinkingConfig=(gen>=3)?{thinkingLevel:'low'}:{thinkingBudget:0};
+  };
   let lastErr;
   // 無料枠のレート制限(429)等は自動リトライ（Retry-After尊重＋指数バックオフ）
   for(let attempt=0;attempt<6;attempt++){
     const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),opt.timeout||60000);
     linkAbort(ctrl);
     try{
-      const res=await fetch(url,{method:'POST',signal:ctrl.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      applyThinking();
+      const res=await fetch(urlOf(),{method:'POST',signal:ctrl.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(res.status===429||res.status===503||res.status===500){
         let bodyTxt='';try{bodyTxt=await res.text();}catch(e){}
         if(res.status===429){
           _gemMinInterval=Math.min(_gemMinInterval+1500,12000); // 以後の間隔を自動拡大
-          if(/per ?day|perday|requestsperday|daily|一日|日次/i.test(bodyTxt)){
-            // 日次上限はリトライ無意味 → 即終了（catchに拾わせないためbreak）
+          const rd=(bodyTxt.match(/retryDelay"?\s*[:：]\s*"?(\d+(?:\.\d+)?)s/i)||[])[1];
+          // 分あたり制限は待てば回復するので日次と誤認しない（retryDelayが短ければ待機）
+          const isDaily=/per ?day|perday|requestsperday|daily/i.test(bodyTxt)&&!(rd&&parseFloat(rd)<=120);
+          if(isDaily){
             clearTimeout(to);
-            lastErr=new Error('Gemini無料枠の【1日の上限】に到達しました。米国太平洋時間の0時(日本の昼頃)にリセットされます。それまではローカル(Ollama)を使うか、時間をおいてください。');
+            if(switchCloudModel()){attempt=0;continue;} // 上限はモデル単位 → 別モデルで継続
+            lastErr=new Error('利用可能な全モデルで本日の無料枠上限に到達しました。米国太平洋時間0時（日本の昼頃）にリセットされます。それまでは LOCAL（Ollama）をご利用ください。');
             break;
           }
         }
@@ -617,7 +640,9 @@ async function detectLLM(){
       const jm=await res.json();
       const avail=(jm.models||[]).filter(m=>!m.supportedGenerationMethods||m.supportedGenerationMethods.includes('generateContent'))
         .map(m=>String(m.name||'').replace(/^models\//,''));
-      ENGINE.model=pickGeminiModel(avail,CLOUD.model);
+      ENGINE.cloudPool=geminiPool(avail,CLOUD.model);   // 上限到達時の切替候補
+      ENGINE.exhausted=new Set();
+      ENGINE.model=ENGINE.cloudPool[0]||pickGeminiModel(avail,CLOUD.model);
       ENGINE.provider='gemini';ENGINE.mode='real';
       _gemMinInterval=/flash-lite/.test(ENGINE.model)?4200:6500; // Lite=15RPM / Flash=10RPM 相当に自動調整
       em.className='em-cloud';em.textContent=`EXTERNAL ▸ ${ENGINE.model}`;
