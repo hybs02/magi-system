@@ -127,11 +127,7 @@
   .summary .row .v{min-width:30px;font-weight:bold;}
   .summary .row .r{color:#c9c9c9;flex:1;}
   .summary .tot{margin-top:6px;padding-top:5px;border-top:1px solid var(--dim);font-size:12px;font-weight:bold;}
-
-  .examples{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
-  .examples button{background:transparent;border:1px solid var(--dim);color:#b8454d;font-size:11px;
-    padding:5px 9px;letter-spacing:0;font-weight:normal;}
-  .examples button:hover{border-color:var(--red);color:var(--red);filter:none;}
+
   .console{height:460px;overflow-y:auto;background:#0a0001;border:2px solid var(--dim);padding:10px;
     font-family:"Consolas",monospace;font-size:13px;line-height:1.5;color:#d8d8d8;}
   .console::-webkit-scrollbar{width:9px;}.console::-webkit-scrollbar-thumb{background:var(--dim);}
@@ -187,9 +183,7 @@
     /* 指で押しやすいサイズに */
     button{padding:13px 18px;min-height:44px;}
     .qrow{gap:6px;}
-    .qrow #askBtn{flex:1;}
-    .examples{gap:5px;}
-    .examples button{min-height:0;padding:7px 10px;font-size:11px;}
+    .qrow #askBtn{flex:1;}
     .mini,.hdbtn{min-height:0;}
     .cloudgrid input{font-size:16px;}
     /* ログは画面高に追従（キーボード表示時も見切れにくい） */
@@ -262,13 +256,12 @@
           <input type="text" id="question" list="qhist" placeholder="MAGIに諮る議題を入力（Ctrl+Enterで開始 / Escで中止）"><datalist id="qhist"></datalist>
           <button id="askBtn">審議開始</button><button id="stopBtn" class="stopbtn" hidden>中止</button>
         </div>
-        <div class="examples" id="examples"></div>
         <div class="engine" id="engineBar">ENGINE <span id="engineMode" class="em-detecting">SCANNING…</span>
           <button id="redetect" class="mini">再検出</button>
           <span id="engineHint" class="ehint"></span>
         </div>
         <details class="cloudbox">
-          <summary>▸ EXTERNAL LINK — 外部演算（PC不要）</summary>
+          <summary>EXTERNAL LINK — 外部演算（PC不要）</summary>
           <div class="cloudgrid">
             <input type="password" id="cloudKey" placeholder="Gemini APIキーを貼り付け">
             <input type="text" id="cloudModel" placeholder="モデル名（空欄=最新を自動選択）">
@@ -900,12 +893,6 @@ document.getElementById('redetect').addEventListener('click',detectLLM);
 })();
 detectLLM();
 
-const EX=['第3新東京市の市民を守るため避難計画を実行すべきか','使徒への攻撃を即時に開始すべきか',
-  'データに基づき最適な戦術配置に変更すべきか','今日は仕事を休んで自由に過ごしたい、許可すべきか',
-  '感情を抑えてデータ通りに行動すべきか','効率を最優先し危険な作戦を強行すべきか'];
-const exWrap=document.getElementById('examples');
-EX.forEach(t=>{const b=document.createElement('button');b.textContent=t.length>15?t.slice(0,14)+'…':t;b.title=t;
-  b.onclick=()=>{qInput.value=t;deliberate();};exWrap.appendChild(b);});
 logSys('MAGI SYSTEM READY. 議題を入力し「審議開始」を押してください。');
 </script>
 </body>
