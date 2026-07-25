@@ -134,7 +134,7 @@
   .dimtxt{color:var(--dim);}
   .engine{margin-top:10px;font-size:11px;color:#b88;letter-spacing:.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:"Consolas",monospace;}
   .em-real{color:var(--green);font-weight:bold;}
-  .em-sim{color:#ffd23f;font-weight:bold;}
+  .em-off{color:#ffd23f;font-weight:bold;}
   .em-detecting{color:#888;}
   .mini{background:transparent;border:1px solid var(--dim);color:#b8454d;font-size:10px;padding:3px 8px;letter-spacing:0;font-weight:normal;}
   .mini:hover{border-color:var(--red);color:var(--red);filter:none;}
@@ -211,7 +211,7 @@
           <button id="askBtn">審議開始</button><button id="stopBtn" class="stopbtn" hidden>中止</button>
         </div>
         <div class="examples" id="examples"></div>
-        <div class="engine" id="engineBar">ENGINE <span id="engineMode" class="em-detecting">検出中…</span>
+        <div class="engine" id="engineBar">ENGINE <span id="engineMode" class="em-detecting">SCANNING…</span>
           <button id="redetect" class="mini">再検出</button>
           <span id="engineHint" class="ehint"></span>
         </div>
@@ -325,7 +325,7 @@ async function deliberate(){
   reset();T0=performance.now();startCode();
   logSys('══ MAGI SYSTEM 起動 ══');await sleep(200);
   logSys(`諮問事項を受理：「${q}」`);await sleep(200);
-  logSys(`三賢者（LLM: ${ENGINE.model}）による合議を開始する。`);await sleep(260);
+  logSys(`三賢者による合議を開始する。 [${ENGINE.provider==='gemini'?'EXTERNAL':'LOCAL'} ▸ ${ENGINE.model}]`);await sleep(260);
 
   let R;
   try{
@@ -358,7 +358,7 @@ async function deliberate(){
 }
 
 
-/* ===== 本物モード（ローカルLLM = Ollama・無料・各機が実際に推論） ===== */
+/* ===== 推論エンジン（LOCAL=Ollama / EXTERNAL=Gemini。各機が実際に推論する） ===== */
 const OLLAMA_PORT=11434;
 // 接続先はページのホストから自動決定：localhost/file:// → localhost、PCのIPで開けばそのIPへ（スマホ対応）
 const ollamaBase=(location.protocol==='http:'||location.protocol==='https:')
@@ -583,7 +583,7 @@ async function llmGemini(messages,opt){
 }
 async function detectLLM(){
   const em=document.getElementById('engineMode'),hint=document.getElementById('engineHint');
-  em.className='em-detecting';em.textContent='検出中…';hint.textContent='';
+  em.className='em-detecting';em.textContent='SCANNING…';hint.textContent='';
   askBtn.disabled=true;askBtn.textContent='検出中…';
   const cloudFirst = CLOUD.prefer && CLOUD.key;  // 「Ollamaがあってもクラウドを使う」
   // 1) ローカルOllama（クラウド優先がOFFのとき）
@@ -602,7 +602,7 @@ async function detectLLM(){
     for(const p of pref){const hit=models.find(m=>m.startsWith(p));if(hit){chosen=hit;break;}}
     ENGINE.model=chosen||models[0];
     ENGINE.provider='ollama';ENGINE.mode='real';
-    em.className='em-real';em.textContent=`本物モード（ローカル: ${ENGINE.model}）`;
+    em.className='em-real';em.textContent=`LOCAL ▸ ${ENGINE.model}`;
     hint.textContent='LOCAL 演算 — 無制限・端末内で完結';
     askBtn.disabled=false;askBtn.textContent='審議開始';
     return;
@@ -620,19 +620,19 @@ async function detectLLM(){
       ENGINE.model=pickGeminiModel(avail,CLOUD.model);
       ENGINE.provider='gemini';ENGINE.mode='real';
       _gemMinInterval=/flash-lite/.test(ENGINE.model)?4200:6500; // Lite=15RPM / Flash=10RPM 相当に自動調整
-      em.className='em-cloud';em.textContent=`クラウドモード（Gemini: ${ENGINE.model}）`;
+      em.className='em-cloud';em.textContent=`EXTERNAL ▸ ${ENGINE.model}`;
       hint.textContent='EXTERNAL 演算 — Gemini 経由（PC不要）';
       askBtn.disabled=false;askBtn.textContent='審議開始';
       return;
     }catch(e){
-      ENGINE.mode='off';em.className='em-sim';em.textContent='クラウド接続失敗（キー/モデルを確認）';
+      ENGINE.mode='off';em.className='em-off';em.textContent='LINK ERROR';
       hint.textContent='KEY もしくは MODEL 名を確認 → 保存して再検出';
       askBtn.disabled=true;askBtn.textContent='接続失敗';
       return;
     }
   }
   // 3) どちらも無い
-  ENGINE.mode='off';em.className='em-sim';em.textContent='エンジン未接続';
+  ENGINE.mode='off';em.className='em-off';em.textContent='NO LINK';
   hint.textContent='LOCAL: Ollama を起動 ／ EXTERNAL: 下記に Gemini KEY を登録';
   askBtn.disabled=true;askBtn.textContent='エンジン未接続';
 }
