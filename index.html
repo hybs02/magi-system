@@ -104,6 +104,30 @@
     font-size:14px;letter-spacing:2px;cursor:pointer;transition:filter .2s;}
   button:hover{filter:brightness(1.2);}button:disabled{background:var(--dim);cursor:not-allowed;}
   .stopbtn{background:#7a1217;color:#ffd7db;}
+  /* 進行ステッパー */
+  .hdbtn{background:transparent;border:1px solid #000;color:#000;font-size:9px;padding:1px 6px;letter-spacing:1px;opacity:.75;}
+  .hdbtn:hover{opacity:1;filter:none;}
+  .progbar{display:flex;align-items:center;gap:6px;padding:5px 10px;border-bottom:1px solid var(--dim);
+    font-family:"Consolas",monospace;font-size:10px;color:var(--dim);letter-spacing:1px;flex-wrap:wrap;}
+  .progbar .step{border:1px solid var(--dim);padding:1px 7px;color:#8a3a40;white-space:nowrap;}
+  .progbar .step.active{border-color:var(--red);color:#000;background:var(--red);
+    animation:stepglow 1.1s infinite alternate;}
+  @keyframes stepglow{from{box-shadow:0 0 2px var(--red);}to{box-shadow:0 0 10px var(--red);}}
+  .progbar .step.done{border-color:var(--green);color:var(--green);}
+  .progbar .pmeta{margin-left:auto;color:#8a3a40;white-space:nowrap;}
+  /* 最新へ追従 */
+  .jumpbtn{position:absolute;right:14px;bottom:12px;z-index:5;background:var(--red);color:#000;
+    font-size:10px;padding:5px 10px;letter-spacing:1px;box-shadow:0 0 12px rgba(255,47,58,.6);}
+  /* 決議サマリー */
+  .summary{border:1px solid var(--dim);background:rgba(255,47,58,.05);padding:8px 10px;margin-top:4px;}
+  .summary .sh{font-size:10px;letter-spacing:2px;color:var(--redglow);border-bottom:1px solid var(--dim);
+    padding-bottom:3px;margin-bottom:6px;}
+  .summary .row{display:flex;gap:8px;align-items:baseline;font-size:12px;margin:3px 0;line-height:1.5;}
+  .summary .row .u{min-width:88px;font-weight:bold;}
+  .summary .row .v{min-width:30px;font-weight:bold;}
+  .summary .row .r{color:#c9c9c9;flex:1;}
+  .summary .tot{margin-top:6px;padding-top:5px;border-top:1px solid var(--dim);font-size:12px;font-weight:bold;}
+
   .examples{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
   .examples button{background:transparent;border:1px solid var(--dim);color:#b8454d;font-size:11px;
     padding:5px 9px;letter-spacing:0;font-weight:normal;}
@@ -152,6 +176,34 @@
   .cloudpref input{vertical-align:middle;margin-right:5px;}
   footer{text-align:center;color:var(--dim);font-size:10px;letter-spacing:2px;padding:12px;
     border-top:1px solid var(--dim);margin-top:14px;font-family:"Consolas",monospace;}
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;}
+  }
+  /* ===== スマホ最適化 ===== */
+  @media(max-width:640px){
+    .wrap{padding:10px;}
+    /* iOSで入力時に画面が拡大しないよう16px以上にする */
+    input[type=text],input[type=password]{font-size:16px;padding:12px;}
+    /* 指で押しやすいサイズに */
+    button{padding:13px 18px;min-height:44px;}
+    .qrow{gap:6px;}
+    .qrow #askBtn{flex:1;}
+    .examples{gap:5px;}
+    .examples button{min-height:0;padding:7px 10px;font-size:11px;}
+    .mini,.hdbtn{min-height:0;}
+    .cloudgrid input{font-size:16px;}
+    /* ログは画面高に追従（キーボード表示時も見切れにくい） */
+    .console{height:min(58vh,420px);font-size:12.5px;}
+    .say .msg{font-size:12.5px;line-height:1.7;}
+    .summary .row{flex-wrap:wrap;gap:4px;}
+    .summary .row .u{min-width:76px;}
+    .summary .row .r{flex-basis:100%;padding-left:2px;}
+    .progbar{font-size:9px;gap:4px;padding:4px 8px;}
+    .progbar .pmeta{margin-left:auto;}
+    header{padding:7px 12px;letter-spacing:2px;}
+    header .title{font-size:15px;letter-spacing:5px;}
+    .jumpbtn{right:10px;bottom:10px;min-height:0;padding:7px 12px;}
+  }
 </style>
 </head>
 <body>
@@ -207,7 +259,7 @@
       <div class="hd">■ 諮問入力 / PROPOSAL INPUT</div>
       <div class="bd">
         <div class="qrow">
-          <input type="text" id="question" placeholder="MAGIに諮る議題を入力">
+          <input type="text" id="question" list="qhist" placeholder="MAGIに諮る議題を入力（Ctrl+Enterで開始 / Escで中止）"><datalist id="qhist"></datalist>
           <button id="askBtn">審議開始</button><button id="stopBtn" class="stopbtn" hidden>中止</button>
         </div>
         <div class="examples" id="examples"></div>
@@ -232,8 +284,22 @@
       </div>
     </div>
     <div class="panel" style="margin-top:14px">
-      <div class="hd">■ 審議モニタ / DELIBERATION LOG <span class="dimtxt" style="float:right" id="statusTag">IDLE</span></div>
-      <div class="bd" style="padding:0"><div class="console" id="console"></div></div>
+      <div class="hd">■ 審議モニタ / DELIBERATION LOG
+        <span style="display:flex;gap:8px;align-items:center">
+          <button id="copyLog" class="hdbtn" title="審議記録をコピー">COPY</button>
+          <span class="dimtxt" id="statusTag">IDLE</span>
+        </span>
+      </div>
+      <div class="progbar" id="progBar">
+        <span class="step" id="st1">意見表明</span>
+        <span class="step" id="st2">討論</span>
+        <span class="step" id="st3">最終投票</span>
+        <span class="pmeta"><span id="progCount">0/0</span> ・ <span id="progTime">00:00</span></span>
+      </div>
+      <div class="bd" style="padding:0;position:relative">
+        <div class="console" id="console" aria-live="polite"></div>
+        <button id="jumpBtn" class="jumpbtn" hidden>↓ 最新へ</button>
+      </div>
     </div>
   </div>
 
@@ -258,8 +324,11 @@ function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i)
 
 const consoleEl=document.getElementById('console');let T0=0;
 function stamp(){const t=(performance.now()-T0)/1000;return `${pad(Math.floor(t/60))}:${pad(Math.floor(t%60))}.${Math.floor((t*10)%10)}`;}
+let stickBottom=true;
 function logRaw(cls,html){const d=document.createElement('div');d.className='logline '+(cls||'');
-  d.innerHTML=html;consoleEl.appendChild(d);consoleEl.scrollTop=consoleEl.scrollHeight;return d;}
+  d.innerHTML=html;consoleEl.appendChild(d);
+  if(stickBottom)consoleEl.scrollTop=consoleEl.scrollHeight;   // 読み返し中は追従しない
+  return d;}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function logSys(text){logRaw('lsys',`<span class="ts">[${stamp()}]</span>${esc(text)}`);}
@@ -302,7 +371,25 @@ function reset(){
   const fs=document.getElementById('finalStamp');fs.classList.remove('show');fs.style.color='';
 }
 const verdictJP=v=>v?'可決':'否決';
-function phase(jp,rom){statusTag.textContent=rom;}
+function phase(jp,rom){
+  statusTag.textContent=rom;
+  const n=/OPENING/.test(rom)?1:(/CROSS-DEBATE/.test(rom)?2:3);
+  for(let i=1;i<=3;i++){
+    const el=document.getElementById('st'+i);if(!el)continue;
+    el.classList.toggle('active',i===n);el.classList.toggle('done',i<n);
+  }
+}
+// 進行状況（応答数／経過時間）
+const PROG={done:0,total:0,timer:null};
+function progUpdate(){
+  const c=document.getElementById('progCount'),t=document.getElementById('progTime');
+  if(c)c.textContent=`${PROG.done}/${PROG.total||'-'}`;
+  if(t)t.textContent=T0?stamp().split('.')[0]:'00:00';
+}
+function progStart(total){PROG.done=0;PROG.total=total;progUpdate();
+  if(PROG.timer)clearInterval(PROG.timer);PROG.timer=setInterval(progUpdate,500);}
+function progStop(){if(PROG.timer)clearInterval(PROG.timer);PROG.timer=null;progUpdate();}
+function progTick(){PROG.done++;progUpdate();}
 
 const askBtn=document.getElementById('askBtn');
 const stopBtn=document.getElementById('stopBtn');
@@ -323,6 +410,7 @@ async function deliberate(){
   askBtn.disabled=true;askBtn.textContent='審議中…';
   ABORT=new AbortController();stopBtn.hidden=false;
   reset();T0=performance.now();startCode();
+  progStart(12);saveTopic(q);
   logSys('══ MAGI SYSTEM 起動 ══');await sleep(200);
   logSys(`諮問事項を受理：「${q}」`);await sleep(200);
   logSys(`三賢者による合議を開始する。 [${ENGINE.provider==='gemini'?'EXTERNAL':'LOCAL'} ▸ ${ENGINE.model}]`);await sleep(260);
@@ -334,7 +422,7 @@ async function deliberate(){
     const msg=(e&&e.message)||String(e);
     if(aborted()||/__ABORT__|abort/i.test(msg)){logSys('■ 審議を中止しました。');stopCode('---');statusTag.textContent='STOPPED';}
     else{logSys('⚠ 審議中にエラーが発生しました：'+msg);stopCode('ERR');statusTag.textContent='ERROR';}
-    finishRun();return;
+    progStop();finishRun();return;
   }
 
   await sleep(200);
@@ -353,8 +441,8 @@ async function deliberate(){
   if(!approved)document.getElementById('magiPanel').classList.add('alert');
   logRaw('lsys',`<span class="ts">[${stamp()}]</span><span class="${approved?'verdict-ok':'verdict-ng'}">■ 最終議決：${approved?'承認 — 提案を実行に移す':'否決 — 提案を棄却する'}${unanimous?'（全会一致）':'（多数決）'}</span>`);
 
-  logSys(`審議完了 — 所要時間 ${stamp()}`);
-  statusTag.textContent='DONE';finishRun();
+  logSummary(R,yesN,approved,unanimous);
+  progStop();statusTag.textContent='DONE';finishRun();
 }
 
 
@@ -673,6 +761,7 @@ async function agentTurn(k,sys,history,userMsg,opt){
     um=userMsg+'\n※前回の回答が日本語ではありませんでした。必ず自然な日本語（ひらがな・カタカナを含む）だけで、最初から答え直してください。中国語・英語は禁止。';
   }
   history.push({role:'user',content:userMsg},{role:'assistant',content:out});
+  progTick();
   return out;
 }
 const NP_REAL=460; // 生成長（250字程度＋JSON構文ぶんの余裕。途中切れ防止）
@@ -701,6 +790,7 @@ async function runPhasesReal(q){
   // PHASE 2 討論（複数巡で深掘り：割れたら2巡、一致なら1巡で各自が論拠を強化）
   const splitInit=(yesN!==0&&yesN!==3);
   const ROUNDS=splitInit?2:1;
+  PROG.total=3+3*ROUNDS+3;progUpdate();
   for(let rnd=1;rnd<=ROUNDS;rnd++){
     const y=order.filter(k=>R[k].vote).length;const split=(y!==0&&y!==3);
     phase('討論','CROSS-DEBATE');logPhase(`第二段階：討論 第${rnd}巡（LLM）`,'CROSS-DEBATE R'+rnd);
@@ -730,11 +820,63 @@ async function runPhasesReal(q){
     const baseVote=j.vote?j.vote==='可決':R[k].vote;
     const lv=leadVerdict(clean(j.closing)); // 冒頭の賛否を最優先
     const newVote=(lv!==null)?lv:(j.vote?j.vote==='可決':reconcileVote(baseVote,clean(j.closing)));const flipped=newVote!==R[k].vote;
-    R[k].vote=newVote;R[k].flipped=flipped;
+    R[k].vote=newVote;R[k].flipped=flipped;R[k].closing=clean(j.closing);
     setBlock(k,{cls:newVote?'yes':'no'});
     await aSay(k,(clean(j.closing)||'最終判定：'+verdictJP(newVote))+(flipped?'（再評価により変更）':''),null,300);}
   return R;
 }
+/* ===== 操作性まわり ===== */
+// 読み返し中は自動スクロールを止め、「最新へ」で復帰
+const jumpBtn=document.getElementById('jumpBtn');
+consoleEl.addEventListener('scroll',()=>{
+  const atEnd=consoleEl.scrollTop+consoleEl.clientHeight>=consoleEl.scrollHeight-12;
+  stickBottom=atEnd; jumpBtn.hidden=atEnd;
+});
+jumpBtn.addEventListener('click',()=>{stickBottom=true;jumpBtn.hidden=true;consoleEl.scrollTop=consoleEl.scrollHeight;});
+
+// 審議記録をコピー
+document.getElementById('copyLog').addEventListener('click',async e=>{
+  const txt=[...consoleEl.querySelectorAll('.logline')].map(d=>d.textContent.replace(/\s+/g,' ').trim()).join('\n');
+  const btn=e.currentTarget;
+  try{await navigator.clipboard.writeText(txt||'(記録なし)');btn.textContent='COPIED';}
+  catch(err){btn.textContent='FAILED';}
+  setTimeout(()=>btn.textContent='COPY',1400);
+});
+
+// 議題履歴（この端末内のみ・最大12件）
+function loadTopics(){try{return JSON.parse(localStorage.getItem('magi_topics')||'[]');}catch(e){return [];}}
+function renderTopics(){
+  const dl=document.getElementById('qhist');if(!dl)return;
+  dl.innerHTML=loadTopics().map(t=>`<option value="${t.replace(/"/g,'&quot;')}">`).join('');
+}
+function saveTopic(q){
+  const list=loadTopics().filter(t=>t!==q);list.unshift(q);
+  try{localStorage.setItem('magi_topics',JSON.stringify(list.slice(0,12)));}catch(e){}
+  renderTopics();
+}
+renderTopics();
+
+// 決議サマリー（結論を一目で）
+function logSummary(R,yesN,approved,unanimous){
+  const rows=order.map(k=>{
+    const yes=R[k].vote,col=yes?'var(--cyan)':'var(--hot)';
+    const src=(R[k].closing||R[k].statement||'').replace(/^(可決|否決|賛成|反対|承認|否定)\s*[。．.、,：:]\s*/,'');
+    const one=esc((src.split(/[。．!！?？]/)[0]||'').slice(0,44));
+    return `<div class="row"><span class="u" style="color:${col}">${SHORT[k]}</span>`+
+           `<span class="v" style="color:${col}">${yes?'可決':'否決'}</span>`+
+           `<span class="r">${one}</span></div>`;
+  }).join('');
+  logRaw('summary',`<div class="sh">■ 決議サマリー / VERDICT SUMMARY</div>${rows}`+
+    `<div class="tot" style="color:${approved?'var(--green)':'var(--hot)'}">`+
+    `最終議決：${approved?'承認':'否決'}　可決 ${yesN} : 否決 ${3-yesN}　（${unanimous?'全会一致':'多数決'}）・所要 ${stamp().split('.')[0]}</div>`);
+}
+
+// キーボード：Ctrl+Enterで開始 / Escで中止
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&!stopBtn.hidden){stopBtn.click();}
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!askBtn.disabled){deliberate();}
+});
+
 askBtn.addEventListener('click',deliberate);
 stopBtn.addEventListener('click',()=>{if(ABORT){ABORT.abort();stopBtn.disabled=true;stopBtn.textContent='中止中…';}});
 qInput.addEventListener('keydown',e=>{if(e.key==='Enter')deliberate();});
