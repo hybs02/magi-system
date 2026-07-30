@@ -139,7 +139,7 @@
   .summary .row .v{min-width:30px;font-weight:bold;}
   .summary .row .r{color:#c9c9c9;flex:1;}
   .summary .tot{margin-top:6px;padding-top:5px;border-top:1px solid var(--dim);font-size:12px;font-weight:bold;}
-
+
   .console{height:460px;overflow-y:auto;background:#0a0001;border:2px solid var(--dim);padding:10px;
     font-family:"Consolas",monospace;font-size:13px;line-height:1.5;color:#d8d8d8;}
   .console::-webkit-scrollbar{width:9px;}.console::-webkit-scrollbar-thumb{background:var(--dim);}
@@ -858,13 +858,13 @@ async function runPhasesReal(q){
   phase('最終投票','FINAL VOTE');logPhase('第三段階：再評価 → 最終投票（LLM）','FINAL VOTE');
   order.forEach(k=>setBlock(k,{cls:'thinking'}));
   const fin=await Promise.all(order.map(k=>agentTurn(k,PERSONA_SYS[k],hist[k],
-    `ここまでの全討論を踏まえ、最終的な投票を決定せよ。他機の論に説得されたなら遠慮なく考えを変えてよい。誰のどの発言が効いたかにも触れてよい。\n【必須】closingは必ず冒頭を「可決。」または「否決。」で始め、その直後から結論・理由を続けること。voteもそれと必ず一致させること。既に述べた言い回しの繰り返しは避ける。\nvote(可決/否決)・confidence(0〜100の整数)・closing(冒頭に賛否＋理由・あなたらしく100〜250字)のJSONで答えよ。`,
+    `ここまでの全討論を踏まえ、最終的な投票を決定せよ。他機の論に説得されたなら遠慮なく考えを変えてよい。誰のどの発言が効いたかにも触れてよい。\n【必須】closingは必ず冒頭を「可決。」または「否決。」で始め、その直後から結論・理由を続けること。voteもそれと必ず一致させること。既に述べた言い回しの繰り返しは避ける。\nvote(可決/否決)・confidence(0〜100の整数)・closing(冒頭に賛否＋理由・あなたらしく100〜250字)・reason(結論の決め手を20〜40字で。「否決します」のような結論の言い直しは禁止し、理由の中身を書く)のJSONで答えよ。`,
     {format:'json',fewshot:PFEW[k].fin,temperature:TEMP[k],num_predict:NP_REAL})));
   for(let i=0;i<order.length;i++){const k=order[i];const j=extractJSON(fin[i])||{};
     const baseVote=j.vote?j.vote==='可決':R[k].vote;
     const lv=leadVerdict(clean(j.closing)); // 冒頭の賛否を最優先
     const newVote=(lv!==null)?lv:(j.vote?j.vote==='可決':reconcileVote(baseVote,clean(j.closing)));const flipped=newVote!==R[k].vote;
-    R[k].vote=newVote;R[k].flipped=flipped;R[k].closing=clean(j.closing);
+    R[k].vote=newVote;R[k].flipped=flipped;R[k].closing=clean(j.closing);R[k].finalReason=clean(j.reason,60);
     setBlock(k,{cls:newVote?'yes':'no'});
     await aSay(k,(clean(j.closing)||'最終判定：'+verdictJP(newVote))+(flipped?'（再評価により変更）':''),null,300);}
   return R;
@@ -922,8 +922,12 @@ renderTopics();
 function logSummary(R,yesN,approved,unanimous){
   const rows=order.map(k=>{
     const yes=R[k].vote,col=yes?'var(--cyan)':'var(--hot)';
-    const src=(R[k].closing||R[k].statement||'').replace(/^(可決|否決|賛成|反対|承認|否定)\s*[。．.、,：:]\s*/,'');
-    const one=esc((src.split(/[。．!！?？]/)[0]||'').slice(0,44));
+    // 決め手 → 中身のある文 → 意見表明の根拠、の順に採用（結論の言い直しは捨てる）
+    const hasVerdict=/(可決|否決|賛成|反対|承認|否定)/;
+    const pick=t=>(String(t||'').split(/[。．!！?？]/)
+        .map(x=>x.replace(/^(可決|否決|賛成|反対|承認|否定)\s*[。．.、,：:]\s*/,'').trim())
+        .find(x=>x.length>=10&&!(hasVerdict.test(x)&&x.length<=16)))||'';
+    const one=esc((R[k].finalReason||pick(R[k].closing)||pick(R[k].statement)||R[k].reason||'').slice(0,46));
     return `<div class="row"><span class="u" style="color:${col}">${SHORT[k]}</span>`+
            `<span class="v" style="color:${col}">${yes?'可決':'否決'}</span>`+
            `<span class="r">${one}</span></div>`;
