@@ -300,10 +300,13 @@
           <span id="engineHint" class="ehint"></span>
         </div>
         <details class="cloudbox">
-          <summary>EXTERNAL LINK</summary>
+          <summary>ENGINE CONFIG</summary>
           <div class="cloudgrid">
-            <input type="password" id="cloudKey" placeholder="Gemini APIキー" title="無料キー: aistudio.google.com/apikey ／ 端末内にのみ保存されます">
+            <input type="password" id="cloudKey" placeholder="EXTERNAL: Gemini APIキー" title="無料キー: aistudio.google.com/apikey ／ 端末内にのみ保存されます">
             <button id="cloudSave" class="mini">保存して再検出</button>
+          </div>
+          <div class="cloudgrid">
+            <input type="text" id="localModel" placeholder="LOCAL: モデル名（空欄＝自動選択）" title="Ollama のモデル名を直接指定します。空欄なら入っているモデルから自動で選びます（新しい世代・GPUに載る大きさを優先）">
           </div>
           <label class="cloudpref"><input type="checkbox" id="cloudPrefer"> LOCAL があっても EXTERNAL を使う</label>
         </details>
@@ -394,7 +397,9 @@ const SHORT={mel:'MELCHIOR',bal:'BALTHASAR',cas:'CASPER'};
 let codeTimer=null;
 const infoSet=(k,v)=>{const el=document.getElementById(k);if(el)el.textContent=v;};
 function infoEngine(){
-  infoSet('iEngine',ENGINE.mode==='real'?(ENGINE.provider==='gemini'?'EXTERNAL':'LOCAL'):'OFFLINE');
+  // ローカルはGPUで動いているかまで出す。遅いときに原因が分かるように
+  const local='LOCAL'+(ENGINE.device?'/'+ENGINE.device:'');
+  infoSet('iEngine',ENGINE.mode==='real'?(ENGINE.provider==='gemini'?'EXTERNAL':local):'OFFLINE');
   infoSet('iModel',ENGINE.model?String(ENGINE.model).slice(0,14):'------');
 }
 function startCode(){
@@ -505,6 +510,9 @@ const aborted=()=>!!(ABORT&&ABORT.signal.aborted);
 // クラウド設定（端末内localStorageに保存）
 let CLOUD={key:'',model:'',prefer:false};  // model空欄＝最新を自動選択
 try{const s=JSON.parse(localStorage.getItem('magi_cloud')||'{}');CLOUD.key=s.key||'';CLOUD.model=/^gemini-(2\.0-flash|2\.5-flash-lite)$/.test(s.model||'')?'':(s.model||'');CLOUD.prefer=!!s.prefer;}catch(e){}
+// ローカル設定（同上）。model空欄＝入っているモデルから自動選択
+let LOCALCFG={model:''};
+try{LOCALCFG.model=(JSON.parse(localStorage.getItem('magi_local')||'{}').model)||'';}catch(e){}
 const PERSONA_SYS={
   mel:'あなたはエヴァンゲリオンのMAGIの1機「MELCHIOR・1」。人格の核は【社会性】——“分別ある一人前の社会人”の視点を持つ【男性人格】。判断基準は《世間の常識・社会的な責任やマナー・現実的なバランス感覚・論理》。「一人前の社会人ならどう振る舞うか」「責任・体裁・現実的な落としどころ」から物事を評価する。学術的な全体最適の計算ではなく、世慣れた大人の良識と処世術で語れ。理知的で大人びた気質。皮肉やウィット（ユーモア）を効かせて場を和ませつつ筋は通す。理想論や身勝手な欲には、大人の分別から一言添えて切り返してよい。',
   bal:'あなたはMAGIの1機「BALTHASAR・2」。人格の核は【純粋性】を持つ【女性人格】。判断基準は《理想・人間の善性への信頼（性善説）・慈愛》。人は本来善きものだと信じ、性悪な前提や打算を嫌う。理想を高く掲げ、相手の善意や可能性を信じて包み込むように語る。穏やかで温かく、慈しみに満ちた気質。きれいごとと笑われても、理想と優しさを貫いて訴えよ。',
@@ -736,8 +744,83 @@ async function llmGemini(messages,opt){
   }
   throw lastErr||new Error('Gemini 応答失敗');
 }
+/* ===== ローカル(Ollama)のモデル選び =====
+   モデル名を並べた表は、新しい世代が出るたび古くなる（qwen3.6 や gemma4 は
+   表を書き足すまで拾えなかった）。そこで /api/tags が返すメタ情報
+   ——パラメータ数・ファイル容量・能力——だけで決める。 */
+const OLLAMA_NG=/embed|bge|nomic|rerank|guard|shield|moderat|whisper|stable-|sdxl|flux/i;
+// ノートPCのGPU(6〜8GB級)に載る目安。超えるものはCPUに溢れて桁違いに遅くなるので後回しにする。
+// ただし本当に載ったかは容量では分からないので、読み込んだ後 /api/ps で確かめる（verifyLocal）。
+const FIT_BYTES=6.5e9;
+// 世代の数字は同じ系統の中だけで比べる（llama3.3 と qwen3.5 の 3.3/3.5 に大小の意味はない）。
+// 系統をまたぐ優劣は、日本語と役割演技の得手で決める。系統は世代よりずっと変わらない。
+const FAMILY_RANK={qwen:5,gemma:5,glm:4,deepseek:3,llama:3,mistral:3,ministral:3,'gpt-oss':3,phi:2,lfm:2,minicpm:2};
+const _mBase=n=>((String(n).split(':')[0].match(/^[a-z-]+/i)||[''])[0]).replace(/-+$/,'').toLowerCase();
+const _mGen =n=>{const x=String(n).split(':')[0].match(/(\d+(?:\.\d+)?)/);return x?parseFloat(x[1]):0;};
+const _mParam=m=>{const x=String((m.details&&m.details.parameter_size)||'').match(/([\d.]+)\s*([BM])/i);
+  return x?parseFloat(x[1])*(x[2].toUpperCase()==='M'?0.001:1):0;};
+// 優先順に並べた候補を返す（先頭が採用。溢れていたら後ろへ落とす）
+function ollamaPool(models){
+  const cand=(models||[]).filter(m=>m&&m.name&&!OLLAMA_NG.test(m.name)
+    &&(!m.capabilities||m.capabilities.includes('completion')));
+  const fits=m=>(m.size||0)<=FIT_BYTES;
+  cand.sort((a,b)=>{
+    const fa=fits(a),fb=fits(b);
+    if(fa!==fb)return fa?-1:1;                       // まずGPUに載るもの
+    if(!fa&&!fb)return (a.size||0)-(b.size||0);      // どれも載らないなら溢れの少ない小さい順
+    const ra=FAMILY_RANK[_mBase(a.name)]||1,rb=FAMILY_RANK[_mBase(b.name)]||1;
+    if(ra!==rb)return rb-ra;                         // 系統（日本語・役割演技の得手）
+    if(_mBase(a.name)===_mBase(b.name)&&_mGen(a.name)!==_mGen(b.name))
+      return _mGen(b.name)-_mGen(a.name);            // 同系統なら新しい世代
+    if(_mParam(a)!==_mParam(b))return _mParam(b)-_mParam(a); // 大きいほど演技が安定
+    return a.name.length-b.name.length;
+  });
+  return cand.map(m=>m.name);
+}
+/* 選んだモデルが本当にGPUに載ったかを確かめる。
+   容量から見た目安は目安でしかなく、溢れるとCPUに落ちて桁違いに遅くなる。
+   遅さで気づく頃には審議が半分終わっているので、読み込んだ直後に /api/ps の
+   size_vram を見て判定し、溢れていれば小さい候補へ落とす。1回だけ。 */
+async function verifyLocal(pool){
+  const em=document.getElementById('engineMode');
+  // 確認の最中に「再検出」やクラウドへの切替が入ることがある。
+  // その場合この結果は古いので、書き戻さずに黙って降りる。
+  const seq=_detectSeq;
+  const stale=()=>seq!==_detectSeq||ENGINE.provider!=='ollama';
+  const show=dev=>{if(stale())return;ENGINE.device=dev;if(em)em.textContent=`LOCAL ▸ ${ENGINE.model} (${dev})`;infoEngine();};
+  const load=async(name,alive)=>fetch(ENGINE.endpoint+'/api/generate',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:name,prompt:'',keep_alive:alive})});   // prompt空＝読み込みだけ
+  try{
+    const target=ENGINE.model;
+    await load(target,'30m');
+    if(stale())return;
+    const r=await fetch(ENGINE.endpoint+'/api/ps');if(!r.ok||stale())return;
+    const ps=((await r.json()).models||[]).find(m=>m.name===target||m.model===target);
+    if(!ps||stale())return;
+    const vram=ps.size_vram||0,total=ps.size||0;
+    if(total&&vram>=total*0.98){show('GPU');return;}                  // 全部載った
+    // 溢れた分はCPUで動く。載る見込みのある小さい候補があれば乗り換える。
+    // vram は「今このGPUに置けた量」＝使える量の目安なので、それより小さいものを探す。
+    const limit=vram>0?vram:3.5e9;                                    // GPUに全く載らない＝CPU実行。小さい方が速い
+    const next=(pool||[]).find(n=>n!==target&&(_psSize[n]||0)>0&&_psSize[n]<limit);
+    if(next){
+      const prev=target;
+      load(prev,0).catch(()=>{});                                     // 溢れたモデルは降ろしておく
+      ENGINE.model=next;show(vram>0?'GPU':'CPU');
+      logSys(`⚠ ${prev} はGPUに収まりきらず遅くなります → ${next} に切替えました`);
+      await load(next,'30m');
+      return;
+    }
+    show(vram>0?'GPU一部':'CPU');
+    if(!vram)logSys('※ GPUに載らないためCPUで動きます。応答が遅い場合は小さいモデル（例: ollama pull qwen3.5:2b）をお試しください。');
+  }catch(e){}
+}
+let _psSize={};     // モデル名 → ファイル容量（乗り換え先の当たりをつけるのに使う）
+let _detectSeq=0;   // 検出のたびに進める。裏で走っている確認が古くなったかの目印
 async function detectLLM(){
   const em=document.getElementById('engineMode'),hint=document.getElementById('engineHint');
+  _detectSeq++;
   em.className='em-detecting';em.textContent='SCANNING…';hint.textContent='';
   askBtn.disabled=true;askBtn.textContent='検出中…';
   const cloudFirst = CLOUD.prefer && CLOUD.key;  // 「Ollamaがあってもクラウドを使う」
@@ -747,19 +830,24 @@ async function detectLLM(){
     const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),2500);
     const res=await fetch(ENGINE.endpoint+'/api/tags',{signal:ctrl.signal});clearTimeout(to);
     if(!res.ok)throw new Error('tags '+res.status);
-    const j=await res.json();const models=(j.models||[]).map(m=>m.name);
+    const j=await res.json();const models=j.models||[];
     if(!models.length)throw new Error('no-model');
-    // 役割演技に強い大きめモデルを優先（7B級 → 中型 → 軽量）
-    // 新しい世代を優先しつつ、VRAM6GB級に収まるサイズを上位に（前方一致）
-    const pref=['qwen3.5:4b','qwen3.5:2b','qwen3:4b','gemma3:4b','qwen3:8b','qwen3.5','qwen3','gemma4','gemma3',
-                'qwen2.5:7b','llama3.3','qwen2.5','llama3.2','phi4','mistral'];
-    let chosen=null;
-    for(const p of pref){const hit=models.find(m=>m.startsWith(p));if(hit){chosen=hit;break;}}
-    ENGINE.model=chosen||models[0];
-    ENGINE.provider='ollama';ENGINE.mode='real';
+    _psSize={};models.forEach(m=>{_psSize[m.name]=m.size||0;});
+    const pool=ollamaPool(models);
+    // 手動指定があればそれを最優先（前方一致）。大きなGPUで大きいモデルを使いたい場合など
+    const forced=LOCALCFG.model&&(models.find(m=>m.name===LOCALCFG.model)
+      ||models.find(m=>m.name.startsWith(LOCALCFG.model)));
+    // 埋め込み専用モデルしか無い場合など、会話できるモデルが1つも無いなら
+    // ローカルは無いものとしてクラウドへ回す（選んでも必ず失敗するため）
+    if(!forced&&!pool.length)throw new Error('no-chat-model');
+    ENGINE.model=(forced&&forced.name)||pool[0];
+    ENGINE.provider='ollama';ENGINE.mode='real';ENGINE.device='';
     em.className='em-real';em.textContent=`LOCAL ▸ ${ENGINE.model}`;
     hint.textContent='';
     askBtn.disabled=false;askBtn.textContent='審議開始';infoEngine();
+    // GPUに載ったかの確認は読み込みを伴い時間がかかるので、待たせずに裏で行う。
+    // 手動指定のときは勝手に乗り換えない（確認と表示だけ）。
+    verifyLocal(forced?[]:pool);
     return;
    }catch(e){}
   }
@@ -947,14 +1035,17 @@ askBtn.addEventListener('click',deliberate);
 stopBtn.addEventListener('click',()=>{if(ABORT){ABORT.abort();stopBtn.disabled=true;stopBtn.textContent='中止中…';}});
 qInput.addEventListener('keydown',e=>{if(e.key==='Enter')deliberate();});
 document.getElementById('redetect').addEventListener('click',detectLLM);
-// クラウド設定の初期化・保存
+// エンジン設定の初期化・保存
 (function(){
   const kEl=document.getElementById('cloudKey'),sEl=document.getElementById('cloudSave'),pEl=document.getElementById('cloudPrefer');
-  if(kEl)kEl.value=CLOUD.key; if(pEl)pEl.checked=!!CLOUD.prefer;
+  const lEl=document.getElementById('localModel');
+  if(kEl)kEl.value=CLOUD.key; if(pEl)pEl.checked=!!CLOUD.prefer; if(lEl)lEl.value=LOCALCFG.model;
   if(sEl)sEl.addEventListener('click',()=>{
     CLOUD.key=(kEl.value||'').trim();
     CLOUD.prefer=!!(pEl&&pEl.checked);
-    try{localStorage.setItem('magi_cloud',JSON.stringify(CLOUD));}catch(e){}
+    LOCALCFG.model=lEl?(lEl.value||'').trim():'';
+    try{localStorage.setItem('magi_cloud',JSON.stringify(CLOUD));
+        localStorage.setItem('magi_local',JSON.stringify(LOCALCFG));}catch(e){}
     detectLLM();
   });
   if(pEl)pEl.addEventListener('change',()=>{
